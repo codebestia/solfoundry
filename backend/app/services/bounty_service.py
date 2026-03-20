@@ -58,6 +58,8 @@ def _to_bounty_response(b: BountyDB) -> BountyResponse:
         created_by=b.created_by,
         submissions=subs,
         submission_count=len(subs),
+        claimed_by=b.claimed_by,
+        claim_deadline=b.claim_deadline,
         created_at=b.created_at,
         updated_at=b.updated_at,
     )
@@ -74,6 +76,8 @@ def _to_list_item(b: BountyDB) -> BountyListItem:
         deadline=b.deadline,
         created_by=b.created_by,
         submission_count=len(b.submissions),
+        claimed_by=b.claimed_by,
+        claim_deadline=b.claim_deadline,
         created_at=b.created_at,
     )
 
