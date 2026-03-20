@@ -7,6 +7,7 @@ search, autocomplete, hot bounties, recommended bounties.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -23,9 +24,21 @@ from app.models.bounty import (
     BountyUpdate,
     SubmissionCreate,
     SubmissionResponse,
+    SubmissionStatusUpdate,
 )
+from app.api.auth import get_current_user
+from app.models.user import UserResponse
+from app.services import auth_service
 from app.services import bounty_service
 from app.services.bounty_search_service import BountySearchService
+
+async def _verify_bounty_ownership(bounty_id: str, user: UserResponse):
+    bounty = bounty_service.get_bounty(bounty_id)
+    if not bounty:
+        raise HTTPException(status_code=404, detail="Bounty not found")
+    if bounty.created_by not in (str(user.id), user.wallet_address):
+        raise HTTPException(status_code=403, detail="Not authorized to modify this bounty")
+    return bounty
 
 router = APIRouter(prefix="/api/bounties", tags=["bounties"])
 
@@ -36,7 +49,11 @@ router = APIRouter(prefix="/api/bounties", tags=["bounties"])
     status_code=201,
     summary="Create a new bounty",
 )
-async def create_bounty(data: BountyCreate) -> BountyResponse:
+async def create_bounty(
+    data: BountyCreate,
+    user: UserResponse = Depends(get_current_user)
+) -> BountyResponse:
+    data.created_by = user.wallet_address or str(user.id)
     return bounty_service.create_bounty(data)
 
 
@@ -164,6 +181,22 @@ async def recommended_bounties(
 # CRUD endpoints
 # ---------------------------------------------------------------------------
 
+@router.get(
+    "/creator/{wallet_address}/stats",
+    summary="Get escrow stats for a creator",
+)
+async def get_creator_stats(wallet_address: str):
+    bounties_resp = bounty_service.list_bounties(created_by=wallet_address, limit=1000)
+    staked, paid, refunded = 0, 0, 0
+    for b in bounties_resp.items:
+        if b.status in (BountyStatus.OPEN, BountyStatus.IN_PROGRESS, BountyStatus.UNDER_REVIEW, BountyStatus.DISPUTED, BountyStatus.COMPLETED):
+            staked += b.reward_amount
+        elif b.status == BountyStatus.PAID:
+            paid += b.reward_amount
+        elif b.status == BountyStatus.CANCELLED:
+            refunded += b.reward_amount
+    return {"staked": staked, "paid": paid, "refunded": refunded}
+
 
 @router.get(
     "/{bounty_id}",
@@ -182,7 +215,12 @@ async def get_bounty(bounty_id: str) -> BountyResponse:
     response_model=BountyResponse,
     summary="Partially update a bounty",
 )
-async def update_bounty(bounty_id: str, data: BountyUpdate) -> BountyResponse:
+async def update_bounty(
+    bounty_id: str,
+    data: BountyUpdate,
+    user: UserResponse = Depends(get_current_user)
+) -> BountyResponse:
+    await _verify_bounty_ownership(bounty_id, user)
     result, error = bounty_service.update_bounty(bounty_id, data)
     if error:
         status_code = 404 if "not found" in error.lower() else 400
@@ -195,7 +233,11 @@ async def update_bounty(bounty_id: str, data: BountyUpdate) -> BountyResponse:
     status_code=204,
     summary="Delete a bounty",
 )
-async def delete_bounty(bounty_id: str) -> None:
+async def delete_bounty(
+    bounty_id: str,
+    user: UserResponse = Depends(get_current_user)
+) -> None:
+    await _verify_bounty_ownership(bounty_id, user)
     if not bounty_service.delete_bounty(bounty_id):
         raise HTTPException(status_code=404, detail="Bounty not found")
 
@@ -206,7 +248,12 @@ async def delete_bounty(bounty_id: str) -> None:
     status_code=201,
     summary="Submit a PR solution for a bounty",
 )
-async def submit_solution(bounty_id: str, data: SubmissionCreate) -> SubmissionResponse:
+async def submit_solution(
+    bounty_id: str,
+    data: SubmissionCreate,
+    user: UserResponse = Depends(get_current_user)
+) -> SubmissionResponse:
+    data.submitted_by = user.wallet_address or str(user.id)
     result, error = bounty_service.submit_solution(bounty_id, data)
     if error:
         status_code = 404 if "not found" in error.lower() else 400
@@ -226,8 +273,7 @@ async def get_submissions(bounty_id: str) -> list[SubmissionResponse]:
     return result
 
 
-class SubmissionStatusUpdate(BaseModel):
-    status: str
+
 
 
 @router.patch(
@@ -236,8 +282,12 @@ class SubmissionStatusUpdate(BaseModel):
     summary="Update a submission's status",
 )
 async def update_submission(
-    bounty_id: str, submission_id: str, data: SubmissionStatusUpdate
+    bounty_id: str,
+    submission_id: str,
+    data: SubmissionStatusUpdate,
+    user: UserResponse = Depends(get_current_user)
 ) -> SubmissionResponse:
+    await _verify_bounty_ownership(bounty_id, user)
     result, error = bounty_service.update_submission(bounty_id, submission_id, data.status)
     if error:
         status_code = 404 if "not found" in error.lower() else 400
@@ -250,7 +300,11 @@ async def update_submission(
     response_model=BountyResponse,
     summary="Cancel a bounty and trigger refund",
 )
-async def cancel_bounty(bounty_id: str) -> BountyResponse:
+async def cancel_bounty(
+    bounty_id: str,
+    user: UserResponse = Depends(get_current_user)
+) -> BountyResponse:
+    await _verify_bounty_ownership(bounty_id, user)
     result, error = bounty_service.update_bounty(
         bounty_id, BountyUpdate(status=BountyStatus.CANCELLED)
     )

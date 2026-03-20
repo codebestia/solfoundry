@@ -48,6 +48,23 @@ VALID_STATUS_TRANSITIONS: dict[BountyStatus, set[BountyStatus]] = {
     BountyStatus.CANCELLED: set(),  # terminal
 }
 
+class SubmissionStatus(str, Enum):
+    """Lifecycle status of a solution submission."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DISPUTED = "disputed"
+    PAID = "paid"
+    REJECTED = "rejected"
+
+VALID_SUBMISSION_TRANSITIONS: dict[SubmissionStatus, set[SubmissionStatus]] = {
+    SubmissionStatus.PENDING: {SubmissionStatus.APPROVED, SubmissionStatus.DISPUTED, SubmissionStatus.REJECTED},
+    SubmissionStatus.APPROVED: {SubmissionStatus.PAID, SubmissionStatus.DISPUTED},
+    SubmissionStatus.DISPUTED: {SubmissionStatus.APPROVED, SubmissionStatus.REJECTED},
+    SubmissionStatus.PAID: set(),
+    SubmissionStatus.REJECTED: set(),
+}
+
 # Valid status values for webhook processor
 VALID_STATUSES: set[str] = {status.value for status in BountyStatus}
 
@@ -78,7 +95,7 @@ class SubmissionRecord(BaseModel):
     pr_url: str
     submitted_by: str
     notes: Optional[str] = None
-    status: str = "pending"
+    status: SubmissionStatus = SubmissionStatus.PENDING
     ai_score: float = 0.0
     submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -87,7 +104,7 @@ class SubmissionCreate(BaseModel):
     """Payload for submitting a solution."""
 
     pr_url: str = Field(..., min_length=1)
-    submitted_by: str = Field(..., min_length=1, max_length=100)
+    submitted_by: str = Field("system", min_length=1, max_length=100)
     notes: Optional[str] = Field(None, max_length=1000)
 
     @field_validator("pr_url")
@@ -106,7 +123,7 @@ class SubmissionResponse(BaseModel):
     pr_url: str
     submitted_by: str
     notes: Optional[str] = None
-    status: str = "pending"
+    status: SubmissionStatus = SubmissionStatus.PENDING
     ai_score: float = 0.0
     submitted_at: datetime
 
@@ -128,6 +145,12 @@ def _validate_skills(skills: list[str]) -> list[str]:
                 "Skills must be lowercase alphanumeric, may contain . + - _"
             )
     return normalised
+
+
+class SubmissionStatusUpdate(BaseModel):
+    """Request model for updating submission status."""
+
+    status: str
 
 
 class BountyCreate(BaseModel):
@@ -226,6 +249,7 @@ class BountyListItem(BaseModel):
     github_issue_url: Optional[str] = None
     deadline: Optional[datetime] = None
     created_by: str
+    submissions: list[SubmissionResponse] = Field(default_factory=list)
     submission_count: int = 0
     created_at: datetime
 

@@ -18,6 +18,8 @@ from app.models.bounty import (
     SubmissionCreate,
     SubmissionRecord,
     SubmissionResponse,
+    SubmissionStatus,
+    VALID_SUBMISSION_TRANSITIONS,
     VALID_STATUS_TRANSITIONS,
 )
 
@@ -67,6 +69,7 @@ def _to_bounty_response(b: BountyDB) -> BountyResponse:
 
 
 def _to_list_item(b: BountyDB) -> BountyListItem:
+    subs = [_to_submission_response(s) for s in b.submissions]
     return BountyListItem(
         id=b.id,
         title=b.title,
@@ -77,6 +80,7 @@ def _to_list_item(b: BountyDB) -> BountyListItem:
         github_issue_url=b.github_issue_url,
         deadline=b.deadline,
         created_by=b.created_by,
+        submissions=subs,
         submission_count=len(b.submissions),
         created_at=b.created_at,
     )
@@ -199,8 +203,11 @@ def submit_solution(
         if existing.pr_url == data.pr_url:
             return None, "This PR URL has already been submitted for this bounty"
 
-    import random
-    score = random.uniform(0.5, 0.99)
+    # Generate deterministic mock AI score from PR URL
+    import hashlib
+    url_hash = int(hashlib.md5(data.pr_url.encode()).hexdigest(), 16)
+    score = 0.5 + (url_hash % 50) / 100.0
+
     submission = SubmissionRecord(
         bounty_id=bounty_id,
         pr_url=data.pr_url,
@@ -229,9 +236,20 @@ def update_submission(
     if not bounty:
         return None, "Bounty not found"
 
+    try:
+        new_status = SubmissionStatus(status)
+    except ValueError:
+        return None, f"Invalid submission status: {status}"
+
     for sub in bounty.submissions:
         if sub.id == submission_id:
-            sub.status = status
+            allowed = VALID_SUBMISSION_TRANSITIONS.get(sub.status, set())
+            if new_status not in allowed and new_status != sub.status:
+                return None, (
+                    f"Invalid status transition: {sub.status.value} -> {new_status.value}. "
+                    f"Allowed transitions: {[s.value for s in sorted(allowed, key=lambda x: x.value)]}"
+                )
+            sub.status = new_status
             bounty.updated_at = datetime.now(timezone.utc)
             return _to_submission_response(sub), None
 

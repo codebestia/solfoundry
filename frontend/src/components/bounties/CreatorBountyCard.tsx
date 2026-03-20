@@ -12,32 +12,16 @@ interface Submission {
 }
 
 interface CreatorBountyCardProps {
-    bountyId: string;
+    bounty: any;
     onUpdate: () => void;
 }
 
-export function CreatorBountyCard({ bountyId, onUpdate }: CreatorBountyCardProps) {
-    const [bounty, setBounty] = useState<any>(null);
+export function CreatorBountyCard({ bounty, onUpdate }: CreatorBountyCardProps) {
     const [expanded, setExpanded] = useState(false);
     const [isExtending, setIsExtending] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
     const [extendDays, setExtendDays] = useState(7);
-
-    const fetchBountyDetail = async () => {
-        try {
-            const res = await fetch(`/api/bounties/${bountyId}`);
-            if (res.ok) {
-                const data = await res.json();
-                setBounty(data);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    useEffect(() => {
-        fetchBountyDetail();
-    }, [bountyId]);
+    const bountyId = bounty.id;
 
     const handleCancel = async () => {
         if (!window.confirm("Are you sure you want to cancel this bounty? This will trigger a refund.")) return;
@@ -45,7 +29,6 @@ export function CreatorBountyCard({ bountyId, onUpdate }: CreatorBountyCardProps
         try {
             const res = await fetch(`/api/bounties/${bountyId}/cancel`, { method: 'POST' });
             if (res.ok) {
-                await fetchBountyDetail();
                 onUpdate();
             } else {
                 alert("Failed to cancel bounty");
@@ -70,7 +53,6 @@ export function CreatorBountyCard({ bountyId, onUpdate }: CreatorBountyCardProps
                 body: JSON.stringify({ deadline: newDeadline.toISOString() }),
             });
             if (res.ok) {
-                await fetchBountyDetail();
                 onUpdate();
             } else {
                 alert("Failed to extend deadline");
@@ -90,7 +72,7 @@ export function CreatorBountyCard({ bountyId, onUpdate }: CreatorBountyCardProps
                 body: JSON.stringify({ status }),
             });
             if (res.ok) {
-                await fetchBountyDetail();
+                onUpdate();
             } else {
                 alert("Failed to update submission");
             }
@@ -230,6 +212,14 @@ export function CreatorBountyCard({ bountyId, onUpdate }: CreatorBountyCardProps
                                             <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-gray-300 border border-white/10">
                                                 Status: <span className="text-white capitalize">{sub.status}</span>
                                             </span>
+                                            {sub.status === 'paid' && (
+                                                <button
+                                                    onClick={() => window.open(`/profile/${sub.submitted_by}`, '_blank')}
+                                                    className="text-[#14F195] hover:underline text-xs flex items-center gap-1"
+                                                >
+                                                    View Winner Profile ↗
+                                                </button>
+                                            )}
                                         </div>
                                         {sub.notes && <p className="text-gray-400 text-xs italic">"{sub.notes}"</p>}
                                     </div>

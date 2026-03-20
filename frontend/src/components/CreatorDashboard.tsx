@@ -24,6 +24,7 @@ export function CreatorDashboard({
     const [error, setError] = useState<string | null>(null);
 
     const [escrowStats, setEscrowStats] = useState<EscrowStats>({ staked: 0, paid: 0, refunded: 0 });
+    const [notifications, setNotifications] = useState({ pending: 0, disputed: 0 });
 
     const fetchBounties = useCallback(async () => {
         if (!walletAddress) {
@@ -34,25 +35,33 @@ export function CreatorDashboard({
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/bounties?created_by=${walletAddress}&limit=100`);
-            if (!res.ok) throw new Error('Failed to fetch bounties');
-            const data = await res.json();
-            setBounties(data.items || []);
+            // Fetch bounties and stats in parallel
+            const [bountiesRes, statsRes] = await Promise.all([
+                fetch(`/api/bounties?created_by=${walletAddress}&limit=100`),
+                fetch(`/api/bounties/creator/${walletAddress}/stats`)
+            ]);
 
-            // Calculate escrow stats
-            let staked = 0;
-            let paid = 0;
-            let refunded = 0;
-            (data.items || []).forEach((b: any) => {
-                if (b.status === 'open' || b.status === 'in_progress' || b.status === 'under_review' || b.status === 'disputed' || b.status === 'completed') {
-                    staked += b.reward_amount;
-                } else if (b.status === 'paid') {
-                    paid += b.reward_amount;
-                } else if (b.status === 'cancelled') {
-                    refunded += b.reward_amount;
-                }
+            if (!bountiesRes.ok) throw new Error('Failed to fetch bounties');
+            if (!statsRes.ok) throw new Error('Failed to fetch stats');
+
+            const [bountiesData, statsData] = await Promise.all([
+                bountiesRes.json(),
+                statsRes.json()
+            ]);
+
+            setBounties(bountiesData.items || []);
+            setEscrowStats(statsData);
+
+            // Calculate notification counts
+            let pendingCount = 0;
+            let disputedCount = 0;
+            (bountiesData.items || []).forEach((b: any) => {
+                b.submissions?.forEach((s: any) => {
+                    if (s.status === 'pending') pendingCount++;
+                    if (s.status === 'disputed') disputedCount++;
+                });
             });
-            setEscrowStats({ staked, paid, refunded });
+            setNotifications({ pending: pendingCount, disputed: disputedCount });
 
         } catch (err: any) {
             setError(err.message);
@@ -86,7 +95,11 @@ export function CreatorDashboard({
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-[50vh]">
-                <div className="w-12 h-12 border-4 border-[#9945FF] border-t-transparent rounded-full animate-spin" />
+                <div
+                    role="status"
+                    aria-label="Loading"
+                    className="w-12 h-12 border-4 border-[#9945FF] border-t-transparent rounded-full animate-spin"
+                />
             </div>
         );
     }
@@ -104,11 +117,28 @@ export function CreatorDashboard({
             <div className="max-w-7xl mx-auto space-y-8">
 
                 {/* Header elements */}
-                <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#14F195] to-[#9945FF]">
-                        Creator Dashboard
-                    </h1>
-                    <p className="text-gray-400 mt-2">Manage your bounties, review submissions, and track your escrowed funds.</p>
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#14F195] to-[#9945FF]">
+                            Creator Dashboard
+                        </h1>
+                        <p className="text-gray-400 mt-2">Manage your bounties, review submissions, and track your escrowed funds.</p>
+                    </div>
+
+                    <div className="flex gap-3">
+                        {notifications.pending > 0 && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#14F195]/10 border border-[#14F195]/20 rounded-full">
+                                <span className="w-2 h-2 bg-[#14F195] rounded-full animate-pulse" />
+                                <span className="text-[#14F195] text-sm font-bold">{notifications.pending} Pending Review</span>
+                            </div>
+                        )}
+                        {notifications.disputed > 0 && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-full">
+                                <span className="w-2 h-2 bg-red-500 rounded-full" />
+                                <span className="text-red-500 text-sm font-bold">{notifications.disputed} Disputes</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Escrow Overview */}
@@ -135,8 +165,8 @@ export function CreatorDashboard({
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${activeTab === tab.id
-                                        ? 'bg-[#14F195]/20 text-[#14F195]'
-                                        : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                                    ? 'bg-[#14F195]/20 text-[#14F195]'
+                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
                                     }`}
                             >
                                 {tab.label}
@@ -169,7 +199,7 @@ export function CreatorDashboard({
                         filteredBounties.map(bounty => (
                             <CreatorBountyCard
                                 key={bounty.id}
-                                bountyId={bounty.id}
+                                bounty={bounty}
                                 onUpdate={fetchBounties}
                             />
                         ))
