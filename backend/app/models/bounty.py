@@ -163,6 +163,8 @@ class BountyDB(BaseModel):
     deadline: Optional[datetime] = None
     created_by: str = "system"
     submissions: list[SubmissionRecord] = Field(default_factory=list)
+    claimed_by: Optional[str] = None
+    claim_deadline: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -181,6 +183,8 @@ class BountyResponse(BaseModel):
     created_by: str
     submissions: list[SubmissionResponse] = Field(default_factory=list)
     submission_count: int = 0
+    claimed_by: Optional[str] = None
+    claim_deadline: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -196,6 +200,8 @@ class BountyListItem(BaseModel):
     deadline: Optional[datetime] = None
     created_by: str
     submission_count: int = 0
+    claimed_by: Optional[str] = None
+    claim_deadline: Optional[datetime] = None
     created_at: datetime
 
 
