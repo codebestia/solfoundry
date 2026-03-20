@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.contributors import router as contributors_router
 from app.api.bounties import router as bounties_router
+from app.api.claims import router as claims_router
 from app.api.notifications import router as notifications_router
 from app.api.leaderboard import router as leaderboard_router
 from app.api.payouts import router as payouts_router
@@ -48,6 +49,7 @@ app.add_middleware(
 
 app.include_router(contributors_router)
 app.include_router(bounties_router, prefix="/api", tags=["bounties"])
+app.include_router(claims_router)
 app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 app.include_router(leaderboard_router)
 app.include_router(payouts_router)
