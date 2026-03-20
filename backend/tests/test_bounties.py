@@ -248,7 +248,8 @@ class TestListBounties:
         expected_keys = {
             "id", "title", "tier", "reward_amount", "status",
             "required_skills", "deadline", "created_by",
-            "submission_count", "created_at",
+            "submission_count", "claimed_by", "claim_deadline",
+            "created_at",
         }
         assert set(item.keys()) == expected_keys
 
@@ -366,7 +367,8 @@ class TestGetBounty:
         expected_keys = {
             "id", "title", "description", "tier", "reward_amount", "status",
             "github_issue_url", "required_skills", "deadline", "created_by",
-            "submissions", "submission_count", "created_at", "updated_at",
+            "submissions", "submission_count", "claimed_by", "claim_deadline",
+            "created_at", "updated_at",
         }
         assert set(body.keys()) == expected_keys
 
