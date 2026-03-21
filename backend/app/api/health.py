@@ -49,6 +49,14 @@ async def health_check() -> dict:
     db_status = await _check_database()
     redis_status = await _check_redis()
 
+    # Get counters for sync status
+    from app.services import contributor_service
+    from app.services.bounty_service import _bounty_store
+    from app.services.github_sync import get_last_sync
+
+    contributor_count = await contributor_service.count_contributors()
+    last_sync = get_last_sync()
+
     is_healthy = db_status == "connected" and redis_status == "connected"
 
     return {
@@ -56,6 +64,9 @@ async def health_check() -> dict:
         "version": "1.0.0",
         "uptime_seconds": round(time.monotonic() - START_TIME),
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "bounties": len(_bounty_store),
+        "contributors": contributor_count,
+        "last_sync": last_sync.isoformat() if last_sync else None,
         "services": {
             "database": db_status,
             "redis": redis_status,

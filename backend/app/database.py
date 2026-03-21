@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -35,10 +36,12 @@ engine_kwargs = {
 if is_sqlite:
     # Use StaticPool for in-memory SQLite so all connections share the same DB.
     # This is critical for tests where multiple sessions must see the same data.
-    from sqlalchemy.pool import StaticPool
-
-    engine_kwargs["poolclass"] = StaticPool
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine_kwargs.update(
+        {
+            "poolclass": StaticPool,
+            "connect_args": {"check_same_thread": False},
+        }
+    )
 else:
     engine_kwargs.update(
         {
@@ -96,7 +99,7 @@ async def init_db() -> None:
             from app.models.user import User  # noqa: F401
             from app.models.bounty_table import BountyTable  # noqa: F401
             from app.models.agent import Agent  # noqa: F401
-            from app.models.contributor import ContributorDB  # noqa: F401
+            from app.models.contributor import ContributorTable, ReputationHistoryDB  # noqa: F401
             from app.models.submission import SubmissionDB  # noqa: F401
             from app.models.tables import (  # noqa: F401
                 PayoutTable, BuybackTable, ReputationHistoryTable,

@@ -1,12 +1,12 @@
-"""Reputation service with PostgreSQL as primary source of truth (Issue #162).
+"""Reputation service with PostgreSQL as primary source of truth.
 
 All read operations query the database. All write operations await the
 database commit before returning. The in-memory store is a synchronized
 cache for fast reads and test compatibility.
 """
 
+import asyncio
 import logging
-import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -30,7 +30,7 @@ from app.services import contributor_service
 logger = logging.getLogger(__name__)
 
 _reputation_store: dict[str, list[ReputationHistoryEntry]] = {}
-_reputation_lock = threading.Lock()
+_reputation_lock = asyncio.Lock()
 
 
 async def hydrate_from_database() -> None:
@@ -43,7 +43,7 @@ async def hydrate_from_database() -> None:
 
     loaded = await load_reputation()
     if loaded:
-        with _reputation_lock:
+        async with _reputation_lock:
             _reputation_store.update(loaded)
 
 
@@ -233,7 +233,7 @@ async def record_reputation(
         ContributorNotFoundError: If the contributor does not exist.
         TierNotUnlockedError: If the bounty tier is not yet unlocked.
     """
-    with _reputation_lock:
+    async with _reputation_lock:
         contributor = await contributor_service.get_contributor_db(data.contributor_id)
         if contributor is None:
             raise ContributorNotFoundError(

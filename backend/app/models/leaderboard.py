@@ -41,6 +41,7 @@ class LeaderboardEntry(BaseModel):
     bounties_completed: int = Field(0, description="Number of bounties completed", examples=[12])
     reputation_score: int = Field(0, description="Internal reputation score based on quality", examples=[450])
     wallet_address: Optional[str] = Field(None, description="Linked Solana wallet", examples=["BSz85..."])
+    top_skills: list[str] = Field(default_factory=list, description="Top skills of the contributor")
 
     model_config = {"from_attributes": True}
 
