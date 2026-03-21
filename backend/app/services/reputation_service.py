@@ -249,6 +249,57 @@ async def record_reputation(data: ReputationRecordCreate) -> ReputationHistoryEn
                 f"current maximum allowed tier is T{allowed_tier}"
             )
 
+        # 1. Earned Reputation calculation
+        earned = calculate_earned_reputation(
+            data.review_score, data.bounty_tier, is_veteran(history)
+        )
+
+        entry = ReputationHistoryEntry(
+            entry_id=str(uuid.uuid4()),
+            contributor_id=data.contributor_id,
+            bounty_id=data.bounty_id,
+            bounty_title=data.bounty_title,
+            bounty_tier=data.bounty_tier,
+            review_score=data.review_score,
+            earned_reputation=earned,
+            anti_farming_applied=is_veteran(history) and data.bounty_tier == 1,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        # 2. Update In-Memory Store
+        history.insert(0, entry)
+        _reputation_store[data.contributor_id] = history
+
+        # 3. Update PostgreSQL
+        new_score = round(contributor.reputation_score + earned, 2)
+        await contributor_service.update_reputation_score(
+            data.contributor_id, new_score
+        )
+
+        return entry
+
+
+async def record_reputation_penalty(
+    contributor_id: str, amount: float, reason: str
+) -> None:
+    """Apply a reputation penalty (deduction).
+    
+    Used for unfair rejections or frivolous disputes.
+    """
+    async with _reputation_lock:
+        contributor = await contributor_service.get_contributor_db(contributor_id)
+        if not contributor:
+            return
+
+        # Deduct score (min 0)
+        new_score = max(0.0, round(contributor.reputation_score - amount, 2))
+        
+        # Update PG
+        await contributor_service.update_reputation_score(contributor_id, new_score)
+        
+        # Logging for audit (would ideally be in a history table)
+        logger.info(f"Reputation penalty of {amount} applied to {contributor_id}. Reason: {reason}")
+
         anti_farming = is_veteran(history) and data.bounty_tier == 1
 
         earned = calculate_earned_reputation(

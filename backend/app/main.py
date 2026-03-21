@@ -23,6 +23,7 @@ from app.api.websocket import router as websocket_router
 from app.api.agents import router as agents_router
 from app.api.stats import router as stats_router
 from app.api.escrow import router as escrow_router
+from app.api.disputes import router as disputes_router
 from app.database import init_db, close_db, engine
 from app.services.auth_service import AuthError
 from app.services.websocket_manager import manager as ws_manager
@@ -278,6 +279,9 @@ app.include_router(agents_router, prefix="/api")
 
 # Escrow: /api/escrow/*
 app.include_router(escrow_router, prefix="/api")
+
+# Disputes: /api/disputes/*
+app.include_router(disputes_router, prefix="/api")
 
 # Stats: /api/stats (public endpoint)
 app.include_router(stats_router, prefix="/api")
