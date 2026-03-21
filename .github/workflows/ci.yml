@@ -256,6 +256,20 @@ jobs:
         run: cargo fmt -- --check
         continue-on-error: true
 
+  # ==================== CONTAINER IMAGE BUILD CHECKS ====================
+  container-image-build:
+    name: Container Image Build (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t solfoundry-backend:test ./backend
+
+      - name: Build frontend image
+        run: docker build -t solfoundry-frontend:test ./frontend
+
   # ==================== DOCKER COMPOSE SMOKE TEST ====================
   # Spins up the full local stack and verifies basic readiness.
   compose-smoke-test:
@@ -267,14 +281,15 @@ jobs:
 
       - name: Start stack (db + redis + backend + frontend)
         env:
-          JWT_SECRET: smoke-test-jwt
+          JWT_SECRET: smoke-test-jwt-secret-at-least-32-characters
           GITHUB_CLIENT_ID: smoke-test-client-id
           GITHUB_CLIENT_SECRET: smoke-test-client-secret
         run: |
           docker compose up -d --build db redis backend frontend
 
-      - name: Wait for health endpoints + basic API connectivity
+      - name: Wait for health endpoints + verify DB/Redis/proxy/auth paths
         run: |
+          set -euo pipefail
           for i in {1..30}; do
             if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
               break
@@ -282,10 +297,36 @@ jobs:
             sleep 2
           done
 
-          curl -fsS http://localhost:8000/health
+          BACKEND_HEALTH="$(curl -fsS http://localhost:8000/health)"
+          echo "$BACKEND_HEALTH"
+          BACKEND_HEALTH="$BACKEND_HEALTH" python - <<'PY'
+import json, os
+health = json.loads(os.environ["BACKEND_HEALTH"])
+assert health.get("database") == "ok", "database is not healthy"
+assert health.get("redis") == "ok", "redis is not healthy"
+assert health.get("status") == "ok", "overall backend health is not ok"
+print("backend health verified (database + redis)")
+PY
+
           curl -fsS http://localhost:8081/health
           # Verify that nginx -> backend proxying works.
           curl -fsS "http://localhost:8081/api/leaderboard?limit=1" >/dev/null
+
+          # Minimal authenticated path exercise: protected endpoint should reject unauthenticated requests.
+          CODE="$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/auth/me)"
+          test "$CODE" = "401"
+
+      - name: Exercise backend schema initialization
+        run: |
+          docker compose exec -T backend python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"
+
+      - name: Ensure compose services are healthy
+        run: |
+          set -euo pipefail
+          docker inspect --format '{{json .State.Health.Status}}' solfoundry-db | rg '"healthy"'
+          docker inspect --format '{{json .State.Health.Status}}' solfoundry-redis | rg '"healthy"'
+          docker inspect --format '{{json .State.Health.Status}}' solfoundry-backend | rg '"healthy"'
+          docker inspect --format '{{json .State.Health.Status}}' solfoundry-frontend | rg '"healthy"'
 
       - name: Tear down
         if: always()
@@ -295,7 +336,7 @@ jobs:
   ci-status:
     name: CI Status Summary
     runs-on: ubuntu-latest
-    needs: [backend-lint, backend-tests, frontend-lint, frontend-typecheck, frontend-tests, frontend-build, contracts-check, rust-lint, compose-smoke-test, backend-integration-postgres]
+    needs: [backend-lint, backend-tests, frontend-lint, frontend-typecheck, frontend-tests, frontend-build, contracts-check, rust-lint, container-image-build, compose-smoke-test, backend-integration-postgres]
     if: always()
     steps:
       - name: Check CI Results
@@ -312,6 +353,7 @@ jobs:
           echo "| Frontend Build | ${{ needs.frontend-build.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Contracts Check | ${{ needs.contracts-check.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Rust Lint | ${{ needs.rust-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Image Build | ${{ needs.container-image-build.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Compose Smoke Test | ${{ needs.compose-smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Integration (Postgres) | ${{ needs.backend-integration-postgres.result }} |" >> $GITHUB_STEP_SUMMARY
 

@@ -11,7 +11,7 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
-        default: 'production'
+        default: 'staging'
         type: choice
         options:
           - production
@@ -30,22 +30,24 @@ env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/backend
-  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
-  DEPLOY_TAG: ${{ inputs.image_tag || github.sha }}
+  BACKEND_IMAGE: ${{ github.repository }}/backend
+  FRONTEND_IMAGE: ${{ github.repository }}/frontend
+  # Push to main auto-deploys staging; production is manual via workflow_dispatch.
+  DEPLOY_ENV: ${{ github.event_name == 'push' && 'staging' || inputs.environment }}
+  # Rollback uses an immutable image tag and is independent from source checkout.
+  BACKEND_IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
   # ==================== BUILD FRONTEND ====================
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.image_tag == ''
     outputs:
       has_frontend: ${{ steps.check.outputs.has_frontend }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_TAG }}
 
       - name: Check for package.json
         id: check
@@ -76,14 +78,14 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
+          VITE_API_URL: ${{ secrets.API_URL }}
 
       - name: Upload Build Artifacts
         if: steps.check.outputs.has_frontend == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
-          path: frontend/.next/
+          path: frontend/dist/
           retention-days: 7
 
   # ==================== DEPLOY FRONTEND TO VERCEL ====================
@@ -92,14 +94,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
     needs: build-frontend
-    if: needs.build-frontend.outputs.has_frontend == 'true'
+    if: (github.event_name != 'workflow_dispatch' || inputs.image_tag == '') && needs.build-frontend.outputs.has_frontend == 'true'
     outputs:
       vercel_preview_url: ${{ steps.vercel_deploy_preview.outputs['preview-url'] }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_TAG }}
 
       - name: Deploy to Vercel (production)
         id: vercel_deploy
@@ -143,15 +143,16 @@ jobs:
           path: staging-url.txt
           retention-days: 7
 
-  # ==================== BUILD BACKEND DOCKER IMAGE ====================
-  build-backend:
-    name: Build Backend Docker Image
+  # ==================== BUILD & PUSH CONTAINER IMAGES ====================
+  build-and-push-images:
+    name: Build and Push Images (GHCR)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+      backend_image_tag: ${{ steps.tags.outputs.backend_image_tag }}
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.image_tag == '')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -166,33 +167,109 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=
-            type=ref,event=branch
-            type=semver,pattern={{version}}
+      - name: Compute image tags
+        id: tags
+        run: |
+          BACKEND_TAGS="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}"
+          FRONTEND_TAGS="${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}"
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ]; then
+            BACKEND_TAGS="$BACKEND_TAGS,${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest"
+            FRONTEND_TAGS="$FRONTEND_TAGS,${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest"
+          else
+            BACKEND_TAGS="$BACKEND_TAGS,${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:staging"
+            FRONTEND_TAGS="$FRONTEND_TAGS,${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:staging"
+          fi
+          echo "backend_tags=$BACKEND_TAGS" >> $GITHUB_OUTPUT
+          echo "frontend_tags=$FRONTEND_TAGS" >> $GITHUB_OUTPUT
+          echo "backend_image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.backend_tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./backend/Dockerfile
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.tags.outputs.frontend_tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          file: ./frontend/Dockerfile
+
+  # ==================== DEPLOY REDIS TO DIGITALOCEAN ====================
+  deploy-redis:
+    name: Deploy Redis (DigitalOcean)
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    needs: build-and-push-images
+    if: always()
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save DigitalOcean kubeconfig
+        run: doctl kubernetes cluster kubeconfig save ${{ secrets.DIGITALOCEAN_CLUSTER_NAME }}
+
+      - name: Apply Redis resources
+        run: |
+          kubectl apply --namespace ${{ env.DEPLOY_ENV }} -f - <<'EOF'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: solfoundry-redis
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: solfoundry-redis
+            template:
+              metadata:
+                labels:
+                  app: solfoundry-redis
+              spec:
+                containers:
+                - name: redis
+                  image: redis:7-alpine
+                  ports:
+                  - containerPort: 6379
+                  readinessProbe:
+                    tcpSocket:
+                      port: 6379
+                    initialDelaySeconds: 5
+                    periodSeconds: 10
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: redis
+          spec:
+            selector:
+              app: solfoundry-redis
+            ports:
+            - protocol: TCP
+              port: 6379
+              targetPort: 6379
+          EOF
+
+      - name: Wait for Redis rollout
+        run: |
+          kubectl rollout status deployment/solfoundry-redis --namespace ${{ env.DEPLOY_ENV }} --timeout=300s
 
   # ==================== DEPLOY BACKEND TO DIGITALOCEAN ====================
   deploy-backend:
     name: Deploy Backend (DigitalOcean)
     runs-on: ubuntu-latest
     environment: ${{ env.DEPLOY_ENV }}
-    needs: build-backend
+    needs: [build-and-push-images, deploy-redis]
     if: always()
     steps:
       - name: Checkout
@@ -210,7 +287,7 @@ jobs:
         run: |
           # Update deployment image
           kubectl set image deployment/solfoundry-backend \
-            backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEPLOY_TAG }} \
+            backend=${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ env.BACKEND_IMAGE_TAG }} \
             --namespace ${{ env.DEPLOY_ENV }}
           
           # Wait for rollout
@@ -271,17 +348,26 @@ jobs:
           kubectl port-forward deployment/solfoundry-backend 18000:8000 --namespace "$KUBE_NAMESPACE" >/tmp/port-forward.log 2>&1 &
           PF_PID=$!
           trap 'kill "$PF_PID" >/dev/null 2>&1 || true' EXIT
-
           for i in {1..30}; do
             if curl -fsS http://localhost:18000/health >/dev/null 2>&1; then
               break
             fi
             sleep 2
           done
-
-          curl -fsS http://localhost:18000/health
+          HEALTH_JSON="$(curl -fsS http://localhost:18000/health)"
+          echo "$HEALTH_JSON"
+          HEALTH_JSON="$HEALTH_JSON" python - <<'PY'
+import json, os
+health = json.loads(os.environ["HEALTH_JSON"])
+if health.get("database") != "ok":
+    raise SystemExit("backend database connectivity check failed")
+if health.get("redis") != "ok":
+    raise SystemExit("backend redis connectivity check failed")
+print("backend health verified (database + redis)")
+PY
 
       - name: Verify frontend /health endpoint
+        if: github.event_name != 'workflow_dispatch' || inputs.image_tag == ''
         run: |
           set -euo pipefail
           if [ "${{ env.DEPLOY_ENV }}" = "production" ]; then
@@ -294,7 +380,7 @@ jobs:
   deploy-status:
     name: Deployment Status
     runs-on: ubuntu-latest
-    needs: [build-frontend, deploy-frontend, build-backend, deploy-backend, migrate-database]
+    needs: [build-frontend, deploy-frontend, build-and-push-images, deploy-redis, deploy-backend, migrate-database, verify-deployment]
     if: always()
     steps:
       - name: Generate Deployment Summary
@@ -302,19 +388,23 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ env.DEPLOY_ENV }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit/Image Tag:** ${{ env.DEPLOY_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend Image Tag:** ${{ env.BACKEND_IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Build | ${{ needs.build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Deploy | ${{ needs.deploy-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend Build | ${{ needs.build-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Push Images | ${{ needs.build-and-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Redis Deploy | ${{ needs.deploy-redis.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Deploy | ${{ needs.deploy-backend.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Database Migration | ${{ needs.migrate-database.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Post-deploy Verification | ${{ needs.verify-deployment.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Links" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ env.DEPLOY_ENV }}" = "production" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.image_tag }}" != "" ]; then
+            echo "- Backend rollback/tag deployment executed (frontend unchanged)." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ env.DEPLOY_ENV }}" = "production" ]; then
             echo "- [Production Site](https://solfoundry.org)" >> $GITHUB_STEP_SUMMARY
             echo "- [API Health](https://api.solfoundry.org/health)" >> $GITHUB_STEP_SUMMARY
           else

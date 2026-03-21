@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import redis.asyncio as redis
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging_config import setup_logging
@@ -249,10 +251,21 @@ async def health_check():
         logger.error("Health check DB failure: %s", e)
         db_status = "error"
 
+    redis_status = "ok"
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        redis_client = redis.from_url(redis_url)
+        await redis_client.ping()
+        await redis_client.close()
+    except Exception as e:
+        logger.error("Health check Redis failure: %s", e)
+        redis_status = "error"
+
     last_sync = get_last_sync()
     return {
-        "status": "ok" if db_status == "ok" else "degraded",
+        "status": "ok" if db_status == "ok" and redis_status == "ok" else "degraded",
         "database": db_status,
+        "redis": redis_status,
         "bounties": len(_bounty_store),
         "contributors": len(_store),
         "last_sync": last_sync.isoformat() if last_sync else None,
