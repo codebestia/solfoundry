@@ -3,8 +3,6 @@ name: CI/CD Pipeline
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -30,6 +28,7 @@ env:
 jobs:
   # 1. Quality Gate (Lint & Test)
   quality-gate:
+    if: github.event_name == 'pull_request'
     name: Lint & Test
     runs-on: ubuntu-latest
     steps:
@@ -70,89 +69,21 @@ jobs:
           npm run lint --if-present
           npx tsc --noEmit
 
-  # 2. Build & Push Images
-  build-and-push:
-    name: Build & Push Docker Images
-    needs: quality-gate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+  # 2. Deployment Trigger (delegates to `.github/workflows/deploy.yml`)
+  # Consolidation: `deploy.yml` is the single authoritative deployment workflow.
+  trigger-deploy:
+    if: github.event_name == 'workflow_dispatch'
+    name: Trigger deploy.yml (staging/production/rollback)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}
-            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
-          tags: |
-            type=sha,prefix=
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push Backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # 3. Deploy to Staging
-  deploy-staging:
-    name: Deploy to Staging
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - name: Deploy to Railway (or similar)
-        run: echo "Deploying to staging environment..."
-        # Example for Railway/Fly/DigitalOcean would go here
-
-  # 4. Deploy to Production (Manual Approval)
-  deploy-production:
-    name: Deploy to Production
-    needs: deploy-staging
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
-    runs-on: ubuntu-latest
-    environment: 
-      name: production
-      url: https://solfoundry.org
-    steps:
-      - name: Deploy to Production
+      - name: Trigger deploy workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=${{ inputs.image_tag || github.sha }}
-          echo "Deploying image tag $TAG to production environment..."
-
-  # 5. Rollback / Direct Tag Deploy
-  deploy-tag:
-    name: Deploy Specific Tag
-    if: github.event_name == 'workflow_dispatch' && inputs.image_tag != ''
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    steps:
-      - name: Deploy Tag
-        run: |
-          echo "Executing direct deployment/rollback of tag ${{ inputs.image_tag }} to ${{ inputs.environment }}..."
+          echo "Triggering deploy.yml environment=${{ inputs.environment }} image_tag='${{ inputs.image_tag }}'"
+          gh workflow run deploy.yml \
+            --ref "${{ github.ref_name }}" \
+            -f environment="${{ inputs.environment }}" \
+            -f image_tag="${{ inputs.image_tag }}"

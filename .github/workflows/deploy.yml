@@ -128,6 +128,21 @@ jobs:
         run: |
           echo "- [Staging Site](${{ steps.vercel_deploy_preview.outputs['preview-url'] }})" >> $GITHUB_STEP_SUMMARY
 
+      - name: Upload staging URL artifact
+        if: env.DEPLOY_ENV != 'production'
+        run: |
+          echo "${{ steps.vercel_deploy_preview.outputs['preview-url'] }}" > staging-url.txt
+          cat staging-url.txt >> $GITHUB_STEP_SUMMARY
+        shell: bash
+
+      - name: Upload staging URL artifact (file)
+        if: env.DEPLOY_ENV != 'production'
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-url
+          path: staging-url.txt
+          retention-days: 7
+
   # ==================== BUILD BACKEND DOCKER IMAGE ====================
   build-backend:
     name: Build Backend Docker Image
@@ -171,7 +186,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./backend/Dockerfile
-        continue-on-error: true
 
   # ==================== DEPLOY BACKEND TO DIGITALOCEAN ====================
   deploy-backend:
@@ -203,7 +217,6 @@ jobs:
           kubectl rollout status deployment/solfoundry-backend \
             --namespace ${{ env.DEPLOY_ENV }} \
             --timeout=300s
-        continue-on-error: true
 
   # ==================== DATABASE MIGRATIONS ====================
   migrate-database:
@@ -232,7 +245,50 @@ jobs:
         run: alembic upgrade head
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        continue-on-error: true
+
+  # ==================== DEPLOYMENT VERIFICATION ====================
+  # Verify backend readiness + frontend health after rollout.
+  verify-deployment:
+    name: Verify Deployment (health checks)
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend, deploy-backend, migrate-database]
+    if: always()
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save DigitalOcean kubeconfig
+        run: doctl kubernetes cluster kubeconfig save ${{ secrets.DIGITALOCEAN_CLUSTER_NAME }}
+
+      - name: Verify backend /health via port-forward
+        env:
+          KUBE_NAMESPACE: ${{ env.DEPLOY_ENV }}
+        run: |
+          set -euo pipefail
+          kubectl port-forward deployment/solfoundry-backend 18000:8000 --namespace "$KUBE_NAMESPACE" >/tmp/port-forward.log 2>&1 &
+          PF_PID=$!
+          trap 'kill "$PF_PID" >/dev/null 2>&1 || true' EXIT
+
+          for i in {1..30}; do
+            if curl -fsS http://localhost:18000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://localhost:18000/health
+
+      - name: Verify frontend /health endpoint
+        run: |
+          set -euo pipefail
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ]; then
+            curl -fsS https://solfoundry.org/health | head -n 1
+          else
+            curl -fsS "${{ needs.deploy-frontend.outputs.vercel_preview_url }}/health" | head -n 1
+          fi
 
   # ==================== DEPLOYMENT SUMMARY ====================
   deploy-status:
