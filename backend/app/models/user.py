@@ -11,6 +11,14 @@ from pydantic import BaseModel, Field
 from app.database import Base
 
 
+class UserRole(str, Enum):
+    """Available user roles for authorization."""
+
+    CONTRIBUTOR = "contributor"
+    CREATOR = "creator"
+    ADMIN = "admin"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -21,6 +29,7 @@ class User(Base):
     avatar_url = Column(String(512), nullable=True)
     wallet_address = Column(String(64), unique=True, nullable=True, index=True)
     wallet_verified = Column(Boolean, default=False)
+    role = Column(String(20), nullable=False, default=UserRole.CONTRIBUTOR.value)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
@@ -40,6 +49,7 @@ class UserDB(BaseModel):
     avatar_url: Optional[str] = None
     wallet_address: Optional[str] = None
     wallet_verified: bool = False
+    role: str = UserRole.CONTRIBUTOR.value
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -52,6 +62,7 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = Field(None, description="Link to profile avatar", examples=["https://github.com/avatar.png"])
     wallet_address: Optional[str] = Field(None, description="Linked Solana wallet address", examples=["7Pq6..."])
     wallet_verified: bool = Field(False, description="Whether the wallet ownership has been verified via signature")
+    role: str = Field(UserRole.CONTRIBUTOR.value, description="User's role (contributor, creator, admin)")
     created_at: datetime = Field(..., description="Timestamp of account creation")
     updated_at: datetime = Field(..., description="Timestamp of the last update")
 

@@ -5,6 +5,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
 
 from app.api.auth import get_current_user_id, get_admin_user_id
 from app.models.dispute import (
@@ -32,10 +34,11 @@ class ErrorResponse(BaseModel):
 async def create_dispute(
     data: DisputeCreate,
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Initiate a dispute for a rejected bounty submission. Must be within 72 hours of rejection."""
     try:
-        dispute = await dispute_service.create_dispute(data, submitter_id=current_user_id)
+        dispute = await dispute_service.create_dispute(db, data, submitter_id=current_user_id)
         return dispute
     except DisputeError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -49,10 +52,11 @@ async def create_dispute(
 async def get_dispute(
     dispute_id: str,
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Retrieve full details and history for a dispute."""
     try:
-        return await dispute_service.get_dispute(dispute_id)
+        return await dispute_service.get_dispute(db, dispute_id)
     except DisputeError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -66,10 +70,11 @@ async def submit_evidence(
     dispute_id: str,
     evidence: List[EvidenceItem],
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Submit new evidence for an open dispute. Can be called multiple times."""
     try:
-        return await dispute_service.add_evidence(dispute_id, evidence, actor_id=current_user_id)
+        return await dispute_service.add_evidence(db, dispute_id, evidence, actor_id=current_user_id)
     except DisputeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -83,9 +88,10 @@ async def resolve_dispute(
     dispute_id: str,
     data: DisputeResolve,
     admin_id: str = Depends(get_admin_user_id),
+    db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Resolve a dispute. Reserved for platform admins (manual mediation)."""
     try:
-        return await dispute_service.resolve_dispute(dispute_id, data, actor_id=admin_id)
+        return await dispute_service.resolve_dispute(db, dispute_id, data, actor_id=admin_id)
     except DisputeError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -5,6 +5,7 @@ All methods are designed to work with the Unit of Work pattern
 implemented in the database layer.
 """
 
+import logging
 from typing import Optional
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -236,3 +237,16 @@ class NotificationService:
 
         await self.db.delete(notification)
         return True
+
+
+class TelegramNotifier:
+    """Helper for sending system alerts to Telegram."""
+
+    @staticmethod
+    async def send_alert(message: str):
+        """Send a message to the configured telegram admin channel."""
+        # In a real app, read from env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        # import httpx
+        # logger.info(f"Sending Telegram Alert: {message}")
+        # await httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": ID, "text": message})
+        logging.info(f"TELEGRAM ALERT: {message}")

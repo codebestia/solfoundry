@@ -27,6 +27,7 @@ from app.models.user import (
     RefreshTokenResponse,
     UserResponse,
     AuthMessageResponse,
+    UserRole,
 )
 from app.services import auth_service
 from app.services.auth_service import (
@@ -284,14 +285,19 @@ async def get_current_user(
         )
 
 
-def get_admin_user_id(
+async def get_admin_user_id(
     current_user_id: str = Depends(get_current_user_id),
-):
+    db: AsyncSession = Depends(get_db)
+) -> str:
     """
     Dependency that checks if the current user is an admin.
-    For this prototype, we'll allow all authenticated users to be admin or mock it.
     """
-    # In a real app, query User DB or role token
+    user = await auth_service.get_current_user(db, current_user_id)
+    if user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
     return current_user_id
 
 # Export the dependency for use in other modules

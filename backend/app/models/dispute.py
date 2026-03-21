@@ -86,8 +86,8 @@ class DisputeHistoryDB(Base):
 
 
 class EvidenceItem(BaseModel):
-    type: str
-    url: Optional[str] = None
+    type: str = Field(..., pattern="^(screenshot|video|link|code|other)$")
+    url: Optional[str] = Field(None, pattern=r"^https?://[^\s/$.?#].[^\s]*$")
     description: str = Field(..., min_length=1, max_length=500)
 
 
