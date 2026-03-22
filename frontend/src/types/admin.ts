@@ -58,11 +58,27 @@ export interface ContributorAdminItem {
   display_name: string;
   tier: string;
   reputation_score: number;
+  quality_score: number;
   total_bounties_completed: number;
   total_earnings: number;
   is_banned: boolean;
   skills: string[];
   created_at: string;
+}
+
+export interface TierHistoryItem {
+  tier: string;
+  reputation_score: number;
+  bounty_id: string | null;
+  bounty_title: string | null;
+  earned_reputation: number;
+  created_at: string;
+}
+
+export interface TierHistoryResponse {
+  contributor_id: string;
+  items: TierHistoryItem[];
+  total: number;
 }
 
 export interface ContributorListAdminResponse {
@@ -129,10 +145,12 @@ export interface PayoutHistoryResponse {
 export interface SystemHealthResponse {
   status: 'healthy' | 'degraded';
   uptime_seconds: number;
+  bot_uptime_seconds: number;
   timestamp: string;
   services: Record<string, string>;
   queue_depth: number;
   webhook_events_processed: number;
+  github_webhook_status: string;
   active_websocket_connections: number;
 }
 
@@ -143,8 +161,18 @@ export interface SystemHealthResponse {
 export interface AuditLogEntry {
   event: string;
   actor: string;
+  role: string;
   timestamp: string;
   details: Record<string, unknown>;
+}
+
+export interface BountyAdminCreate {
+  title: string;
+  description: string;
+  tier: 1 | 2 | 3;
+  reward_amount: number;
+  deadline?: string;
+  tags?: string[];
 }
 
 export interface AuditLogResponse {

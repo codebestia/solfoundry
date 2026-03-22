@@ -1,7 +1,7 @@
-/** Bounty management panel — search, filter, edit status/reward, close. */
+/** Bounty management panel — search, filter, create, edit status/reward, close. */
 import { useState } from 'react';
-import { useAdminBounties, useUpdateBounty, useCloseBounty } from '../../hooks/useAdminData';
-import type { BountyAdminItem } from '../../types/admin';
+import { useAdminBounties, useUpdateBounty, useCloseBounty, useCreateBounty } from '../../hooks/useAdminData';
+import type { BountyAdminItem, BountyAdminCreate } from '../../types/admin';
 
 const STATUS_COLORS: Record<string, string> = {
   open:         'text-[#14F195] bg-[#14F195]/10',
@@ -126,6 +126,125 @@ function EditModal({ bounty, onClose }: EditModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Create bounty modal
+// ---------------------------------------------------------------------------
+
+function CreateBountyModal({ onClose }: { onClose: () => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [tier, setTier] = useState<1 | 2 | 3>(1);
+  const [reward, setReward] = useState('');
+  const create = useCreateBounty();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: BountyAdminCreate = {
+      title: title.trim(),
+      description: description.trim(),
+      tier,
+      reward_amount: Number(reward),
+    };
+    await create.mutateAsync(payload);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      role="dialog"
+      aria-modal="true"
+      data-testid="bounty-create-modal"
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#12121f] p-6 space-y-4"
+      >
+        <h3 className="text-sm font-semibold">Create Bounty</h3>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Title</label>
+          <input
+            required
+            minLength={3}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Bounty title…"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#9945FF]/50"
+            data-testid="create-title"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Description</label>
+          <textarea
+            required
+            minLength={10}
+            rows={4}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Detailed requirements…"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#9945FF]/50 resize-none"
+            data-testid="create-description"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-xs text-gray-400 mb-1">Tier</label>
+            <select
+              value={tier}
+              onChange={e => setTier(Number(e.target.value) as 1 | 2 | 3)}
+              className="w-full rounded-lg border border-white/10 bg-[#0a0a14] px-3 py-1.5 text-sm text-white focus:outline-none"
+              data-testid="create-tier"
+            >
+              <option value={1}>T1 — Starter</option>
+              <option value={2}>T2 — Standard</option>
+              <option value={3}>T3 — Advanced</option>
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label className="block text-xs text-gray-400 mb-1">Reward ($FNDRY)</label>
+            <input
+              required
+              type="number"
+              min={1}
+              value={reward}
+              onChange={e => setReward(e.target.value)}
+              placeholder="500"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#9945FF]/50"
+              data-testid="create-reward"
+            />
+          </div>
+        </div>
+
+        {create.isError && (
+          <p className="text-xs text-red-400">{(create.error as Error).message}</p>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="submit"
+            disabled={create.isPending}
+            className="flex-1 rounded-lg bg-gradient-to-r from-[#9945FF] to-[#14F195] py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+            data-testid="create-bounty-submit"
+          >
+            {create.isPending ? 'Creating…' : 'Create Bounty'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main panel
 // ---------------------------------------------------------------------------
 
@@ -134,6 +253,7 @@ export function BountyManagement() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<BountyAdminItem | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data, isLoading, error } = useAdminBounties({
     search: search || undefined,
@@ -147,14 +267,20 @@ export function BountyManagement() {
   return (
     <div className="p-6 space-y-4" data-testid="bounty-management">
       {editing && <EditModal bounty={editing} onClose={() => setEditing(null)} />}
+      {creating && <CreateBountyModal onClose={() => setCreating(false)} />}
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Bounty Management</h2>
-        {data && (
-          <span className="text-xs text-gray-500">
-            {data.total} total
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {data && <span className="text-xs text-gray-500">{data.total} total</span>}
+          <button
+            onClick={() => setCreating(true)}
+            className="rounded-lg bg-[#9945FF]/20 text-[#9945FF] px-3 py-1.5 text-xs font-semibold hover:bg-[#9945FF]/30 transition-colors"
+            data-testid="new-bounty-btn"
+          >
+            + New Bounty
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

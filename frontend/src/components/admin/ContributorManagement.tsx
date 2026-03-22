@@ -154,6 +154,7 @@ export function ContributorManagement() {
                 <th className="text-left px-4 py-3 font-medium">Username</th>
                 <th className="text-left px-4 py-3 font-medium">Tier</th>
                 <th className="text-right px-4 py-3 font-medium">Rep Score</th>
+                <th className="text-right px-4 py-3 font-medium">Quality</th>
                 <th className="text-right px-4 py-3 font-medium">Completed</th>
                 <th className="text-right px-4 py-3 font-medium">Earnings</th>
                 <th className="text-left px-4 py-3 font-medium">Status</th>
@@ -179,6 +180,11 @@ export function ContributorManagement() {
                   </td>
                   <td className="px-4 py-3 text-gray-400">{c.tier}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{c.reputation_score.toFixed(1)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    <span className={`font-medium ${(c.quality_score ?? 0) >= 70 ? 'text-[#14F195]' : (c.quality_score ?? 0) >= 40 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                      {(c.quality_score ?? 0).toFixed(0)}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">{c.total_bounties_completed}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-[#14F195]">
                     {c.total_earnings.toLocaleString()}

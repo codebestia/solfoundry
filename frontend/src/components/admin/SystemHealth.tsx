@@ -81,15 +81,20 @@ export function SystemHealth() {
           </div>
 
           {/* Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <MetricCard label="Uptime" value={fmtUptime(data.uptime_seconds)} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <MetricCard label="API Uptime" value={fmtUptime(data.uptime_seconds)} />
+            <MetricCard label="Bot Uptime" value={fmtUptime(data.bot_uptime_seconds)} />
             <MetricCard
               label="Review Queue"
               value={data.queue_depth}
               sub={data.queue_depth > 0 ? 'pending reviews' : 'queue clear'}
             />
             <MetricCard label="WS Connections" value={data.active_websocket_connections} />
-            <MetricCard label="Events Processed" value={data.webhook_events_processed} />
+            <MetricCard label="Audit Events" value={data.webhook_events_processed} sub="all-time" />
+            <MetricCard
+              label="GitHub Webhook"
+              value={data.github_webhook_status}
+            />
           </div>
         </>
       )}

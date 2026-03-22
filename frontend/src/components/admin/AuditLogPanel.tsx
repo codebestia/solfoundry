@@ -101,8 +101,15 @@ export function AuditLogPanel() {
                 {entry.event}
               </span>
 
-              {/* Actor */}
-              <span className="text-gray-500 w-16 shrink-0">{entry.actor}</span>
+              {/* Actor + role */}
+              <span className="text-gray-500 shrink-0 flex items-center gap-1">
+                {entry.actor}
+                {entry.role && entry.role !== 'admin' && (
+                  <span className="text-[10px] text-gray-600 border border-white/10 rounded px-1">
+                    {entry.role}
+                  </span>
+                )}
+              </span>
 
               {/* Details */}
               <div className="flex-1 flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500 min-w-0">

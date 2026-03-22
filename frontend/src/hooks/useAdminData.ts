@@ -8,7 +8,9 @@ import type {
   AdminOverview,
   BountyListAdminResponse,
   BountyAdminUpdate,
+  BountyAdminCreate,
   ContributorListAdminResponse,
+  TierHistoryResponse,
   ReviewPipelineResponse,
   FinancialOverview,
   PayoutHistoryResponse,
@@ -218,3 +220,34 @@ export function useAuditLog(limit = 50, eventFilter?: string) {
     retry: false,
   });
 }
+
+export function useCreateBounty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: BountyAdminCreate) =>
+      adminFetch<{ ok: boolean; bounty_id: string }>('/api/admin/bounties', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'bounties'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'overview'] });
+    },
+  });
+}
+
+export function useContributorHistory(contributorId: string, limit = 50) {
+  return useQuery<TierHistoryResponse>({
+    queryKey: ['admin', 'contributors', contributorId, 'history'],
+    queryFn: () =>
+      adminFetch<TierHistoryResponse>(
+        `/api/admin/contributors/${contributorId}/history?limit=${limit}`,
+      ),
+    staleTime: 30_000,
+    retry: false,
+    enabled: Boolean(contributorId),
+  });
+}
+
+/** Re-export adminFetch for use in components that need direct fetch (e.g. CSV download). */
+export { adminFetch };
