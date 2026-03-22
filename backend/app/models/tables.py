@@ -127,11 +127,7 @@ class BountySubmissionTable(Base):
         DateTime(timezone=True), nullable=False, default=_now, index=True
     )
 
-    __table_args__ = (
-        Index(
-            "ix_bsub_bounty_pr", "bounty_id", "pr_url", unique=True
-        ),
-    )
+    __table_args__ = (Index("ix_bsub_bounty_pr", "bounty_id", "pr_url", unique=True),)
 
 
 class AdminAuditLogTable(Base):

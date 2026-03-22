@@ -32,6 +32,7 @@ BAD_AUTH = {"Authorization": "Bearer wrong-key"}
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def patch_admin_key(monkeypatch):
     """Inject test API key into the admin module before each test."""
@@ -59,6 +60,7 @@ def clear_stores():
 def _make_bounty(bid="b1", title="Fix bug", status=BountyStatus.OPEN, reward=500.0):
     """Insert a minimal BountyDB into the in-memory store."""
     from datetime import datetime, timezone, timedelta
+
     bounty = BountyDB(
         id=bid,
         title=title,
@@ -79,6 +81,7 @@ def _make_bounty(bid="b1", title="Fix bug", status=BountyStatus.OPEN, reward=500
 def _make_contributor(cid="c1", username="alice", banned=False):
     """Insert a minimal contributor into the in-memory store."""
     from app.models.contributor import ContributorDB
+
     c = ContributorDB(
         id=cid,
         username=username,
@@ -97,6 +100,7 @@ def _make_contributor(cid="c1", username="alice", banned=False):
 # ---------------------------------------------------------------------------
 # Auth tests
 # ---------------------------------------------------------------------------
+
 
 class TestAdminAuth:
     def test_unauthenticated_request_returns_401(self, client):
@@ -120,6 +124,7 @@ class TestAdminAuth:
 # ---------------------------------------------------------------------------
 # Overview
 # ---------------------------------------------------------------------------
+
 
 class TestOverview:
     def test_returns_zero_counts_on_empty_stores(self, client):
@@ -155,6 +160,7 @@ class TestOverview:
 # Bounty management
 # ---------------------------------------------------------------------------
 
+
 class TestBountyManagement:
     def test_list_bounties_empty(self, client):
         data = client.get("/api/admin/bounties", headers=AUTH_HEADER).json()
@@ -165,7 +171,9 @@ class TestBountyManagement:
         for i in range(5):
             _make_bounty(f"b{i}", title=f"Bounty {i}")
 
-        data = client.get("/api/admin/bounties?page=1&per_page=3", headers=AUTH_HEADER).json()
+        data = client.get(
+            "/api/admin/bounties?page=1&per_page=3", headers=AUTH_HEADER
+        ).json()
         assert len(data["items"]) == 3
         assert data["total"] == 5
         assert data["page"] == 1
@@ -174,7 +182,9 @@ class TestBountyManagement:
         _make_bounty("b1", title="Fix the login bug")
         _make_bounty("b2", title="Add dark mode")
 
-        data = client.get("/api/admin/bounties?search=login", headers=AUTH_HEADER).json()
+        data = client.get(
+            "/api/admin/bounties?search=login", headers=AUTH_HEADER
+        ).json()
         assert data["total"] == 1
         assert data["items"][0]["id"] == "b1"
 
@@ -232,7 +242,9 @@ class TestBountyManagement:
         for status in (BountyStatus.COMPLETED, BountyStatus.PAID):
             _make_bounty("settled", status=status)
             resp = client.post("/api/admin/bounties/settled/close", headers=AUTH_HEADER)
-            assert resp.status_code == 400, f"Expected 400 for {status}, got {resp.status_code}"
+            assert resp.status_code == 400, (
+                f"Expected 400 for {status}, got {resp.status_code}"
+            )
             bounty_service._bounty_store.pop("settled", None)
 
     def test_close_nonexistent_bounty_404(self, client):
@@ -250,6 +262,7 @@ class TestBountyManagement:
 # Contributor management
 # ---------------------------------------------------------------------------
 
+
 class TestContributorManagement:
     def test_list_contributors_empty(self, client):
         data = client.get("/api/admin/contributors", headers=AUTH_HEADER).json()
@@ -259,7 +272,9 @@ class TestContributorManagement:
         _make_contributor("c1", "alice", banned=False)
         _make_contributor("c2", "bob", banned=True)
 
-        data = client.get("/api/admin/contributors?is_banned=true", headers=AUTH_HEADER).json()
+        data = client.get(
+            "/api/admin/contributors?is_banned=true", headers=AUTH_HEADER
+        ).json()
         assert data["total"] == 1
         assert data["items"][0]["username"] == "bob"
 
@@ -311,6 +326,7 @@ class TestContributorManagement:
 # Review pipeline
 # ---------------------------------------------------------------------------
 
+
 class TestReviewPipeline:
     def test_empty_pipeline(self, client):
         data = client.get("/api/admin/reviews/pipeline", headers=AUTH_HEADER).json()
@@ -323,6 +339,7 @@ class TestReviewPipeline:
 # Financial
 # ---------------------------------------------------------------------------
 
+
 class TestFinancial:
     def test_overview_zero_on_empty(self, client):
         data = client.get("/api/admin/financial/overview", headers=AUTH_HEADER).json()
@@ -331,7 +348,9 @@ class TestFinancial:
 
     def test_overview_sums_paid_bounties(self, client):
         _make_bounty("b1", status=BountyStatus.PAID, reward=1000.0)
-        _make_bounty("b2", status=BountyStatus.COMPLETED, reward=500.0)  # completed ≠ paid out
+        _make_bounty(
+            "b2", status=BountyStatus.COMPLETED, reward=500.0
+        )  # completed ≠ paid out
         _make_bounty("b3", status=BountyStatus.OPEN, reward=200.0)
 
         data = client.get("/api/admin/financial/overview", headers=AUTH_HEADER).json()
@@ -343,7 +362,9 @@ class TestFinancial:
         for i in range(5):
             _make_bounty(f"b{i}", status=BountyStatus.PAID, reward=100.0)
 
-        data = client.get("/api/admin/financial/payouts?page=1&per_page=3", headers=AUTH_HEADER).json()
+        data = client.get(
+            "/api/admin/financial/payouts?page=1&per_page=3", headers=AUTH_HEADER
+        ).json()
         assert len(data["items"]) == 3
         assert data["total"] == 5
 
@@ -351,6 +372,7 @@ class TestFinancial:
 # ---------------------------------------------------------------------------
 # Audit log
 # ---------------------------------------------------------------------------
+
 
 class TestAuditLog:
     def test_empty_audit_log(self, client):
@@ -377,7 +399,9 @@ class TestAuditLog:
             json={"reason": "Spamming the platform"},
         )
 
-        data = client.get("/api/admin/audit-log?event=banned", headers=AUTH_HEADER).json()
+        data = client.get(
+            "/api/admin/audit-log?event=banned", headers=AUTH_HEADER
+        ).json()
         assert all("banned" in e["event"] for e in data["entries"])
 
     def test_audit_log_limit(self, client):

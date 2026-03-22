@@ -41,6 +41,7 @@ from app.constants import START_TIME
 
 _ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "")
 
+
 def _csv_env(key: str) -> set[str]:
     """Return a set of lowercased usernames from a comma-separated env var."""
     raw = os.getenv(key, "")
@@ -59,7 +60,9 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_role(credentials: Optional[HTTPAuthorizationCredentials]) -> tuple[str, AdminRole]:
+async def _resolve_role(
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> tuple[str, AdminRole]:
     """Resolve (actor, role) from a Bearer token.
 
     Accepts:
@@ -161,6 +164,7 @@ async def require_any(
 async def _log(event: str, actor: str, role: str = "admin", **details: Any) -> None:
     """Insert an audit entry into PostgreSQL and emit to structlog."""
     import logging as _logging
+
     audit_event(event, actor=actor, **details)
     try:
         async with get_db_session() as session:
@@ -194,9 +198,13 @@ def _bounty_to_dict(b: Any) -> Dict[str, Any]:
         "tier": b.tier,
         "reward_amount": b.reward_amount,
         "created_by": b.created_by,
-        "deadline": b.deadline.isoformat() if hasattr(b.deadline, "isoformat") else str(b.deadline),
+        "deadline": b.deadline.isoformat()
+        if hasattr(b.deadline, "isoformat")
+        else str(b.deadline),
         "submission_count": len(b.submissions) if b.submissions else 0,
-        "created_at": b.created_at.isoformat() if hasattr(b.created_at, "isoformat") else str(b.created_at),
+        "created_at": b.created_at.isoformat()
+        if hasattr(b.created_at, "isoformat")
+        else str(b.created_at),
     }
 
 
@@ -214,7 +222,9 @@ def _contributor_to_dict(c: Any) -> Dict[str, Any]:
         "skills": getattr(c, "skills", []),
         "created_at": (
             c.created_at.isoformat()
-            if hasattr(c, "created_at") and c.created_at and hasattr(c.created_at, "isoformat")
+            if hasattr(c, "created_at")
+            and c.created_at
+            and hasattr(c.created_at, "isoformat")
             else str(getattr(c, "created_at", ""))
         ),
     }
@@ -271,6 +281,7 @@ class BountyListAdminResponse(BaseModel):
 
 class BountyAdminUpdate(BaseModel):
     """Fields an admin can update on a bounty."""
+
     status: Optional[str] = Field(None, description="New lifecycle status")
     reward_amount: Optional[float] = Field(None, gt=0)
     title: Optional[str] = Field(None, min_length=3, max_length=200)
@@ -278,6 +289,7 @@ class BountyAdminUpdate(BaseModel):
 
 class BountyAdminCreate(BaseModel):
     """Payload for admin-created bounties."""
+
     title: str = Field(..., min_length=3, max_length=200)
     description: str = Field(..., min_length=10, max_length=5000)
     tier: int = Field(..., ge=1, le=3)
@@ -398,7 +410,9 @@ class AuditLogResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/overview", response_model=AdminOverview, summary="Platform overview statistics")
+@router.get(
+    "/overview", response_model=AdminOverview, summary="Platform overview statistics"
+)
 async def get_overview(auth: tuple = Depends(require_any)) -> AdminOverview:
     bounties = list(_bounty_store.values())
     contributors = list(_contributor_store.values())
@@ -408,7 +422,8 @@ async def get_overview(auth: tuple = Depends(require_any)) -> AdminOverview:
     )
     total_submissions = sum(len(b.submissions) for b in bounties if b.submissions)
     pending_reviews = sum(
-        1 for b in bounties
+        1
+        for b in bounties
         for s in (b.submissions or [])
         if not getattr(s, "review_complete", False) and s.status == "pending"
     )
@@ -416,11 +431,19 @@ async def get_overview(auth: tuple = Depends(require_any)) -> AdminOverview:
     return AdminOverview(
         total_bounties=len(bounties),
         open_bounties=sum(1 for b in bounties if b.status == BountyStatus.OPEN),
-        completed_bounties=sum(1 for b in bounties if b.status == BountyStatus.COMPLETED),
-        cancelled_bounties=sum(1 for b in bounties if b.status == BountyStatus.CANCELLED),
+        completed_bounties=sum(
+            1 for b in bounties if b.status == BountyStatus.COMPLETED
+        ),
+        cancelled_bounties=sum(
+            1 for b in bounties if b.status == BountyStatus.CANCELLED
+        ),
         total_contributors=len(contributors),
-        active_contributors=sum(1 for c in contributors if not getattr(c, "is_banned", False)),
-        banned_contributors=sum(1 for c in contributors if getattr(c, "is_banned", False)),
+        active_contributors=sum(
+            1 for c in contributors if not getattr(c, "is_banned", False)
+        ),
+        banned_contributors=sum(
+            1 for c in contributors if getattr(c, "is_banned", False)
+        ),
         total_fndry_paid=total_fndry,
         total_submissions=total_submissions,
         pending_reviews=pending_reviews,
@@ -434,7 +457,9 @@ async def get_overview(auth: tuple = Depends(require_any)) -> AdminOverview:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/bounties", response_model=BountyListAdminResponse, summary="List all bounties")
+@router.get(
+    "/bounties", response_model=BountyListAdminResponse, summary="List all bounties"
+)
 async def list_bounties_admin(
     search: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -447,7 +472,11 @@ async def list_bounties_admin(
 
     if search:
         q = search.lower()
-        items = [b for b in items if q in b.title.lower() or q in getattr(b, "description", "").lower()]
+        items = [
+            b
+            for b in items
+            if q in b.title.lower() or q in getattr(b, "description", "").lower()
+        ]
     if status_filter:
         items = [b for b in items if b.status == status_filter]
     if tier is not None:
@@ -458,7 +487,10 @@ async def list_bounties_admin(
     offset = (page - 1) * per_page
 
     return BountyListAdminResponse(
-        items=[BountyAdminItem(**_bounty_to_dict(b)) for b in items[offset: offset + per_page]],
+        items=[
+            BountyAdminItem(**_bounty_to_dict(b))
+            for b in items[offset : offset + per_page]
+        ],
         total=total,
         page=page,
         per_page=per_page,
@@ -485,7 +517,9 @@ async def create_bounty_admin(
         github_issue_url=None,
     )
     bounty = await create_bounty(create_data)
-    await _log("admin_bounty_created", actor=actor, bounty_id=bounty.id, title=payload.title)
+    await _log(
+        "admin_bounty_created", actor=actor, bounty_id=bounty.id, title=payload.title
+    )
     return {"ok": True, "bounty_id": bounty.id}
 
 
@@ -536,7 +570,9 @@ async def update_bounty_admin(
     if not changes:
         raise HTTPException(status_code=400, detail="No changes provided")
 
-    await _log("admin_bounty_updated", actor=actor, bounty_id=bounty_id, changes=changes)
+    await _log(
+        "admin_bounty_updated", actor=actor, bounty_id=bounty_id, changes=changes
+    )
     return {"ok": True, "bounty_id": bounty_id, "changes": changes}
 
 
@@ -562,7 +598,12 @@ async def close_bounty_admin(
 
     old_status = bounty.status
     bounty.status = BountyStatus.CANCELLED
-    await _log("admin_bounty_closed", actor=actor, bounty_id=bounty_id, previous_status=str(old_status))
+    await _log(
+        "admin_bounty_closed",
+        actor=actor,
+        bounty_id=bounty_id,
+        previous_status=str(old_status),
+    )
     return {"ok": "true", "bounty_id": bounty_id, "status": BountyStatus.CANCELLED}
 
 
@@ -571,7 +612,11 @@ async def close_bounty_admin(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/contributors", response_model=ContributorListAdminResponse, summary="List all contributors")
+@router.get(
+    "/contributors",
+    response_model=ContributorListAdminResponse,
+    summary="List all contributors",
+)
 async def list_contributors_admin(
     search: Optional[str] = Query(None),
     is_banned: Optional[bool] = Query(None),
@@ -592,7 +637,10 @@ async def list_contributors_admin(
     offset = (page - 1) * per_page
 
     return ContributorListAdminResponse(
-        items=[ContributorAdminItem(**_contributor_to_dict(c)) for c in items[offset: offset + per_page]],
+        items=[
+            ContributorAdminItem(**_contributor_to_dict(c))
+            for c in items[offset : offset + per_page]
+        ],
         total=total,
         page=page,
         per_page=per_page,
@@ -633,11 +681,15 @@ async def get_contributor_history(
             bounty_id=r.bounty_id,
             bounty_title=r.bounty_title,
             earned_reputation=float(r.earned_reputation),
-            created_at=r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+            created_at=r.created_at.isoformat()
+            if hasattr(r.created_at, "isoformat")
+            else str(r.created_at),
         )
         for r in rows
     ]
-    return TierHistoryResponse(contributor_id=contributor_id, items=items, total=len(items))
+    return TierHistoryResponse(
+        contributor_id=contributor_id, items=items, total=len(items)
+    )
 
 
 @router.post("/contributors/{contributor_id}/ban", summary="Ban a contributor")
@@ -648,7 +700,9 @@ async def ban_contributor(
 ) -> Dict[str, str]:
     contributor = _contributor_store.get(contributor_id)
     if not contributor:
-        raise HTTPException(status_code=404, detail=f"Contributor {contributor_id!r} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Contributor {contributor_id!r} not found"
+        )
 
     contributor.is_banned = True
     await _log(
@@ -668,7 +722,9 @@ async def unban_contributor(
 ) -> Dict[str, str]:
     contributor = _contributor_store.get(contributor_id)
     if not contributor:
-        raise HTTPException(status_code=404, detail=f"Contributor {contributor_id!r} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Contributor {contributor_id!r} not found"
+        )
 
     contributor.is_banned = False
     await _log(
@@ -685,15 +741,21 @@ async def unban_contributor(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/reviews/pipeline", response_model=ReviewPipelineResponse, summary="Review pipeline")
-async def get_review_pipeline(_auth: tuple = Depends(require_any)) -> ReviewPipelineResponse:
+@router.get(
+    "/reviews/pipeline",
+    response_model=ReviewPipelineResponse,
+    summary="Review pipeline",
+)
+async def get_review_pipeline(
+    _auth: tuple = Depends(require_any),
+) -> ReviewPipelineResponse:
     active: List[ReviewPipelineItem] = []
     completed_count = 0
     passing_count = 0
     score_sum = 0.0
 
     for bounty in _bounty_store.values():
-        for sub in (bounty.submissions or []):
+        for sub in bounty.submissions or []:
             ai_score = float(getattr(sub, "ai_score", 0.0) or 0.0)
             review_complete = getattr(sub, "review_complete", False)
             meets = getattr(sub, "meets_threshold", False)
@@ -704,21 +766,24 @@ async def get_review_pipeline(_auth: tuple = Depends(require_any)) -> ReviewPipe
                 if meets:
                     passing_count += 1
             else:
-                active.append(ReviewPipelineItem(
-                    bounty_id=bounty.id,
-                    bounty_title=bounty.title,
-                    submission_id=str(getattr(sub, "id", "")),
-                    pr_url=getattr(sub, "pr_url", ""),
-                    submitted_by=getattr(sub, "submitted_by", ""),
-                    ai_score=ai_score,
-                    review_complete=review_complete,
-                    meets_threshold=meets,
-                    submitted_at=(
-                        sub.submitted_at.isoformat()
-                        if hasattr(sub, "submitted_at") and hasattr(sub.submitted_at, "isoformat")
-                        else str(getattr(sub, "submitted_at", ""))
-                    ),
-                ))
+                active.append(
+                    ReviewPipelineItem(
+                        bounty_id=bounty.id,
+                        bounty_title=bounty.title,
+                        submission_id=str(getattr(sub, "id", "")),
+                        pr_url=getattr(sub, "pr_url", ""),
+                        submitted_by=getattr(sub, "submitted_by", ""),
+                        ai_score=ai_score,
+                        review_complete=review_complete,
+                        meets_threshold=meets,
+                        submitted_at=(
+                            sub.submitted_at.isoformat()
+                            if hasattr(sub, "submitted_at")
+                            and hasattr(sub.submitted_at, "isoformat")
+                            else str(getattr(sub, "submitted_at", ""))
+                        ),
+                    )
+                )
 
     pass_rate = (passing_count / completed_count) if completed_count else 0.0
     avg_score = (score_sum / completed_count) if completed_count else 0.0
@@ -736,11 +801,21 @@ async def get_review_pipeline(_auth: tuple = Depends(require_any)) -> ReviewPipe
 # ---------------------------------------------------------------------------
 
 
-@router.get("/financial/overview", response_model=FinancialOverview, summary="Token distribution summary")
-async def get_financial_overview(_auth: tuple = Depends(require_any)) -> FinancialOverview:
+@router.get(
+    "/financial/overview",
+    response_model=FinancialOverview,
+    summary="Token distribution summary",
+)
+async def get_financial_overview(
+    _auth: tuple = Depends(require_any),
+) -> FinancialOverview:
     bounties = list(_bounty_store.values())
     paid = [b for b in bounties if b.status == BountyStatus.PAID]
-    pending = [b for b in bounties if b.status in (BountyStatus.UNDER_REVIEW, BountyStatus.COMPLETED)]
+    pending = [
+        b
+        for b in bounties
+        if b.status in (BountyStatus.UNDER_REVIEW, BountyStatus.COMPLETED)
+    ]
 
     total_distributed = sum(b.reward_amount for b in paid)
     rewards = [b.reward_amount for b in bounties if b.reward_amount]
@@ -757,7 +832,9 @@ async def get_financial_overview(_auth: tuple = Depends(require_any)) -> Financi
     )
 
 
-@router.get("/financial/payouts", response_model=PayoutHistoryResponse, summary="Payout history")
+@router.get(
+    "/financial/payouts", response_model=PayoutHistoryResponse, summary="Payout history"
+)
 async def get_payout_history(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -770,7 +847,7 @@ async def get_payout_history(
     )
     total = len(paid_bounties)
     offset = (page - 1) * per_page
-    page_items = paid_bounties[offset: offset + per_page]
+    page_items = paid_bounties[offset : offset + per_page]
 
     return PayoutHistoryResponse(
         items=[
@@ -781,7 +858,9 @@ async def get_payout_history(
                 amount=b.reward_amount,
                 status=b.status,
                 completed_at=(
-                    b.created_at.isoformat() if hasattr(b.created_at, "isoformat") else str(b.created_at)
+                    b.created_at.isoformat()
+                    if hasattr(b.created_at, "isoformat")
+                    else str(b.created_at)
                 ),
             )
             for b in page_items
@@ -795,8 +874,12 @@ async def get_payout_history(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/system/health", response_model=SystemHealthResponse, summary="System health")
-async def get_system_health_admin(_auth: tuple = Depends(require_any)) -> SystemHealthResponse:
+@router.get(
+    "/system/health", response_model=SystemHealthResponse, summary="System health"
+)
+async def get_system_health_admin(
+    _auth: tuple = Depends(require_any),
+) -> SystemHealthResponse:
     from app.database import engine
     from sqlalchemy import text, select as sa_select, func
     from sqlalchemy.exc import SQLAlchemyError
@@ -824,6 +907,7 @@ async def get_system_health_admin(_auth: tuple = Depends(require_any)) -> System
     # WebSocket count
     try:
         from app.services.websocket_manager import manager as ws_manager
+
         ws_count = len(getattr(ws_manager, "active_connections", {}))
     except Exception:
         ws_count = 0
@@ -842,13 +926,15 @@ async def get_system_health_admin(_auth: tuple = Depends(require_any)) -> System
     # GitHub webhook service status: check if the webhook router is reachable
     try:
         from app.api.webhooks.github import router as _gh_router
+
         github_webhook_status = "configured" if _gh_router else "not_configured"
     except Exception:
         github_webhook_status = "not_configured"
 
     # Pending review queue depth
     pending_reviews = sum(
-        1 for b in _bounty_store.values()
+        1
+        for b in _bounty_store.values()
         for s in (b.submissions or [])
         if not getattr(s, "review_complete", False) and s.status == "pending"
     )
@@ -877,7 +963,9 @@ async def get_system_health_admin(_auth: tuple = Depends(require_any)) -> System
 # ---------------------------------------------------------------------------
 
 
-@router.get("/audit-log", response_model=AuditLogResponse, summary="Admin action audit log")
+@router.get(
+    "/audit-log", response_model=AuditLogResponse, summary="Admin action audit log"
+)
 async def get_audit_log(
     limit: int = Query(50, ge=1, le=200),
     event_filter: Optional[str] = Query(None, alias="event"),
@@ -888,8 +976,13 @@ async def get_audit_log(
 
     try:
         from sqlalchemy import func as sa_func
+
         async with get_db_session() as session:
-            base_filter = AdminAuditLogTable.event.contains(event_filter) if event_filter else None
+            base_filter = (
+                AdminAuditLogTable.event.contains(event_filter)
+                if event_filter
+                else None
+            )
 
             count_stmt = sa_select(sa_func.count()).select_from(AdminAuditLogTable)
             if base_filter is not None:
@@ -897,7 +990,9 @@ async def get_audit_log(
             total_result = await session.execute(count_stmt)
             total = total_result.scalar_one_or_none() or 0
 
-            q = sa_select(AdminAuditLogTable).order_by(desc(AdminAuditLogTable.created_at))
+            q = sa_select(AdminAuditLogTable).order_by(
+                desc(AdminAuditLogTable.created_at)
+            )
             if base_filter is not None:
                 q = q.where(base_filter)
             q = q.limit(limit)
@@ -905,6 +1000,7 @@ async def get_audit_log(
             rows = result.scalars().all()
     except Exception as exc:
         import logging as _logging
+
         _logging.getLogger(__name__).error("audit_log_read_failed error=%r", exc)
         return AuditLogResponse(entries=[], total=0)
 
@@ -914,7 +1010,9 @@ async def get_audit_log(
                 event=r.event,
                 actor=r.actor,
                 role=r.role or "admin",
-                timestamp=r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+                timestamp=r.created_at.isoformat()
+                if hasattr(r.created_at, "isoformat")
+                else str(r.created_at),
                 details=r.details or {},
             )
             for r in rows
