@@ -79,6 +79,7 @@ const HowItWorksPage = lazy(() => import('./pages/HowItWorksPage'));
 const DisputeListPage = lazy(() => import('./pages/DisputeListPage'));
 const DisputePage = lazy(() => import('./pages/DisputePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 // ── Loading spinner ──────────────────────────────────────────────────────────
 function LoadingSpinner() {
@@ -145,6 +146,19 @@ function AppLayout() {
   );
 }
 
+// ── Admin layout (bypasses SiteLayout — has its own shell) ───────────────────
+function AdminRoutes() {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
+          <Route path="/admin" element={<AdminPage />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 // ── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
   return (
@@ -153,7 +167,12 @@ export default function App() {
         <ThemeProvider defaultTheme="dark">
           <ToastProvider>
             <WalletProvider defaultNetwork="mainnet-beta">
-              <AppLayout />
+              <Routes>
+                {/* Admin section — own layout, no wallet/site shell needed */}
+                <Route path="/admin*" element={<AdminRoutes />} />
+                {/* Everything else */}
+                <Route path="/*" element={<AppLayout />} />
+              </Routes>
             </WalletProvider>
             <ToastContainer />
           </ToastProvider>
