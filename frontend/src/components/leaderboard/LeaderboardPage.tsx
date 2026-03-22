@@ -5,6 +5,7 @@
  * pages/LeaderboardPage.tsx re-export.
  * @module components/leaderboard/LeaderboardPage
  */
+import { Link } from 'react-router-dom';
 import { useLeaderboard } from '../../hooks/useLeaderboard';
 import { Skeleton, SkeletonTable } from '../common/Skeleton';
 import { NoDataAvailable } from '../common/EmptyState';
@@ -132,8 +133,20 @@ export function LeaderboardPage() {
                 <td className="py-3">
                   <div className="flex items-center gap-2 flex-wrap">
                     <img src={c.avatarUrl} alt={c.username} className="h-6 w-6 rounded-full shrink-0" width={24} height={24} />
-                    <span className="font-medium text-gray-900 dark:text-white">{c.username}</span>
+                    <Link
+                      to={`/profile/${c.username}`}
+                      className="font-medium text-gray-900 hover:text-solana-purple dark:text-white dark:hover:text-solana-purple transition-colors"
+                    >
+                      {c.username}
+                    </Link>
                     <span className="text-xs text-gray-600 dark:text-gray-500">{c.topSkills.slice(0, 2).join(', ')}</span>
+                    <Link
+                      to={`/reputation/${c.username}`}
+                      className="text-xs text-gray-500 hover:text-solana-green dark:hover:text-solana-green transition-colors hidden sm:inline"
+                      aria-label={`View ${c.username} reputation`}
+                    >
+                      REP ↗
+                    </Link>
                   </div>
                 </td>
                 <td className="py-3 text-right text-emerald-700 dark:text-solana-green font-semibold tabular-nums">
