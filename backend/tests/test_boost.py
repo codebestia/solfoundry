@@ -17,8 +17,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-ci")
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -80,8 +79,6 @@ def clean_tables():
 # ---------------------------------------------------------------------------
 # Patch get_db_session to use the test DB
 # ---------------------------------------------------------------------------
-
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def _test_db_session():
@@ -427,7 +424,7 @@ class TestRefundBountyBoosts:
 @pytest.fixture(scope="module")
 def api_client():
     """Create a TestClient with only the bounties router."""
-    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from unittest.mock import patch as _patch
 
     app = FastAPI()
     app.include_router(bounties_router, prefix="/api")

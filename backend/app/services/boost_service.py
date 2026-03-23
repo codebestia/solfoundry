@@ -15,7 +15,7 @@ import os
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit_event
@@ -23,7 +23,6 @@ from app.database import get_db_session
 from app.exceptions import (
     BoostBelowMinimumError,
     BoostInvalidBountyError,
-    BoostNotFoundError,
 )
 from app.models.boost import (
     MINIMUM_BOOST_AMOUNT,
@@ -127,7 +126,6 @@ async def create_boost(
         if bounty is None:
             raise BoostInvalidBountyError(f"Bounty '{bounty_id}' not found")
 
-        boostable_statuses = {"open", "in_progress", "OPEN", "IN_PROGRESS"}
         if str(bounty.status).lower() not in {"open", "in_progress"}:
             raise BoostInvalidBountyError(
                 f"Bounty '{bounty_id}' has status '{bounty.status}' and cannot be boosted"

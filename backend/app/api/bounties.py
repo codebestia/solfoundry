@@ -17,7 +17,6 @@ from app.models.boost import (
     BoostRequest,
     BoostResponse,
     BoostListResponse,
-    BoostSummary,
     BoostLeaderboardResponse,
 )
 from app.models.errors import ErrorResponse
