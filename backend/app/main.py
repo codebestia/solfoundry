@@ -62,7 +62,10 @@ from app.services.websocket_manager import manager as ws_manager
 from app.services.github_sync import sync_all, periodic_sync
 from app.services.auto_approve_service import periodic_auto_approve
 from app.services.bounty_lifecycle_service import periodic_deadline_check
-from app.services.escrow_service import periodic_escrow_refund
+from app.services.contributor_webhook_service import (
+    periodic_batch_dispatch,
+    periodic_escrow_refund,
+)
 from app.core.redis import close_redis
 from app.core.config import ALLOWED_ORIGINS
 from app.middleware.ip_blocklist import IPBlocklistMiddleware
@@ -157,6 +160,11 @@ async def lifespan(app: FastAPI):
         periodic_escrow_refund(interval_seconds=60)
     )
 
+    # Start outbound webhook batch dispatcher (every 5 seconds)
+    webhook_dispatch_task = asyncio.create_task(
+        periodic_batch_dispatch(interval_seconds=5)
+    )
+
     yield
 
     # Shutdown: Cancel background tasks, close connections, then database
@@ -164,6 +172,7 @@ async def lifespan(app: FastAPI):
     auto_approve_task.cancel()
     deadline_task.cancel()
     escrow_refund_task.cancel()
+    webhook_dispatch_task.cancel()
     try:
         await sync_task
     except asyncio.CancelledError:
@@ -178,6 +187,10 @@ async def lifespan(app: FastAPI):
         pass
     try:
         await escrow_refund_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await webhook_dispatch_task
     except asyncio.CancelledError:
         pass
     await ws_manager.shutdown()
@@ -393,6 +406,10 @@ app.include_router(stats_router, prefix="/api")
 # Open Graph previews: /og/*
 app.include_router(og_router)
 app.include_router(contributor_webhooks_router, prefix="/api")
+
+# Solana Webhooks: /api/webhooks/solana/*
+from app.api.webhooks.solana import router as solana_webhook_router
+app.include_router(solana_webhook_router, prefix="/api/webhooks")
 
 # Anti-sybil: /api/anti-sybil/* and /api/admin/sybil/*
 app.include_router(anti_sybil_router, prefix="/api")

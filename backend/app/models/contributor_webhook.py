@@ -26,6 +26,12 @@ WEBHOOK_EVENTS = (
     "review.passed",
     "review.failed",
     "bounty.paid",
+    # ── on-chain events ──
+    "escrow.locked",
+    "escrow.released",
+    "reputation.updated",
+    "stake.deposited",
+    "stake.withdrawn",
 )
 
 
@@ -37,6 +43,12 @@ class WebhookEvent(str, Enum):
     REVIEW_PASSED = "review.passed"
     REVIEW_FAILED = "review.failed"
     BOUNTY_PAID = "bounty.paid"
+    # ── on-chain events ──
+    ESCROW_LOCKED = "escrow.locked"
+    ESCROW_RELEASED = "escrow.released"
+    REPUTATION_UPDATED = "reputation.updated"
+    STAKE_DEPOSITED = "stake.deposited"
+    STAKE_WITHDRAWN = "stake.withdrawn"
 
 
 # ── SQLAlchemy model ───────────────────────────────────────────────────────────
@@ -73,6 +85,50 @@ class ContributorWebhookDB(Base):
     __table_args__ = (
         Index("ix_contributor_webhooks_user_id", "user_id"),
         Index("ix_contributor_webhooks_active", "active"),
+    )
+
+
+class OutboundWebhookQueueDB(Base):
+    """Temporary storage for events before they are batched and dispatched."""
+
+    __tablename__ = "outbound_webhook_queue"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_type = Column(String(50), nullable=False)
+    # The subscriber user_id that should receive this event.
+    # If None, it targets all active webhooks (broadcast).
+    user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    payload = Column(Text, nullable=False)  # JSON serialized WebhookPayload
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+    processed = Column(Boolean, default=False, nullable=False, index=True)
+
+
+class OutboundWebhookLogDB(Base):
+    """History of all outbound webhook delivery attempts."""
+
+    __tablename__ = "outbound_webhook_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id = Column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("contributor_webhooks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    batch_id = Column(String(100), nullable=False, index=True)
+    status = Column(String(20), nullable=False)  # success | failed
+    response_code = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    delivered_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
     )
 
 
@@ -120,9 +176,30 @@ class WebhookListResponse(BaseModel):
 
 
 class WebhookPayload(BaseModel):
-    """Shape of the JSON body POSTed to subscriber endpoints."""
+    """Shape of the JSON body for a single event."""
 
     event: str
-    bounty_id: str
+    bounty_id: Optional[str] = None
     timestamp: str
+    # on-chain metadata
+    tx_signature: Optional[str] = None
+    slot: Optional[int] = None
     data: dict[str, Any]
+
+
+class WebhookBatchPayload(BaseModel):
+    """Payload for batched webhook delivery."""
+
+    webhook_id: str
+    batch_id: str
+    timestamp: str
+    events: list[WebhookPayload]
+
+
+class WebhookDeliveryStats(BaseModel):
+    """Detailed stats for a specific webhook."""
+
+    total_deliveries: int
+    success_rate: float
+    failure_rate: float
+    last_10_deliveries: list[dict[str, Any]]

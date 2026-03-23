@@ -283,6 +283,25 @@ async def record_reputation(data: ReputationRecordCreate) -> ReputationHistoryEn
             data.contributor_id, round(total, 2)
         )
 
+    # ── Dispatch webhook: reputation.updated ──
+    try:
+        from app.database import get_db_session
+        from app.services.contributor_webhook_service import ContributorWebhookService
+        async with get_db_session() as db:
+            wh_service = ContributorWebhookService(db)
+            await wh_service.dispatch_event(
+                event="reputation.updated",
+                bounty_id=data.bounty_id,
+                user_id=data.contributor_id,
+                data={
+                    "new_score": round(total, 2),
+                    "earned": entry.earned_reputation,
+                    "badge": determine_badge(total),
+                },
+            )
+    except Exception as exc:
+        logger.warning("Reputation webhook dispatch failed: %s", exc)
+
     # Await DB write outside the lock to avoid holding it during IO
     try:
         from app.services.pg_store import persist_reputation_entry

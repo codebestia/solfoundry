@@ -8,6 +8,7 @@ import {
   SkeletonStatCard,
   SkeletonActivityFeed,
 } from './common/Skeleton';
+import { WebhookSettings } from './webhooks/WebhookSettings';
 
 // ============================================================================
 // Types
@@ -607,7 +608,7 @@ export function ContributorDashboard({
   onConnectAccount,
   onDisconnectAccount,
 }: ContributorDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'settings' | 'webhooks'>('overview');
 
   // React Query handles fetching, caching, and retry for dashboard data
   const { data: dashboardData, isLoading, isError, error: queryError, refetch } = useQuery({
@@ -765,6 +766,7 @@ export function ContributorDashboard({
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'notifications', label: 'Notifications', badge: unreadNotifications },
+            { id: 'webhooks', label: 'Webhooks' },
             { id: 'settings', label: 'Settings' },
           ].map((tab) => (
             <button
@@ -929,6 +931,12 @@ export function ContributorDashboard({
             onConnectAccount={onConnectAccount}
             onDisconnectAccount={onDisconnectAccount}
           />
+        )}
+
+        {activeTab === 'webhooks' && (
+          <div className="bg-white dark:bg-surface-100 rounded-xl p-5 border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-none">
+            <WebhookSettings />
+          </div>
         )}
       </div>
     </div>

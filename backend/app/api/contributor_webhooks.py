@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user_id
 from app.database import get_db
 from app.models.contributor_webhook import (
+    WebhookDeliveryStats,
     WebhookListResponse,
     WebhookRegisterRequest,
     WebhookResponse,
@@ -116,3 +117,49 @@ async def list_webhooks(
     service = ContributorWebhookService(db)
     items = await service.list_for_user(user_id)
     return WebhookListResponse(items=items, total=len(items))
+
+
+# ── stats ─────────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/{webhook_id}/stats",
+    response_model=WebhookDeliveryStats,
+    summary="Get webhook delivery stats",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        404: {"model": ErrorResponse, "description": "Webhook not found"},
+    },
+)
+async def get_webhook_stats(
+    webhook_id: str = Path(..., description="Webhook UUID"),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> WebhookDeliveryStats:
+    """Return delivery success rates and recent history for a webhook."""
+    service = ContributorWebhookService(db)
+    return await service.get_delivery_stats(webhook_id)
+
+
+# ── test ──────────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{webhook_id}/test",
+    status_code=status.HTTP_200_OK,
+    summary="Send a test webhook event",
+    description="Dispatches a 'test.ping' event to verify the integration.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        404: {"model": ErrorResponse, "description": "Webhook not found"},
+    },
+)
+async def test_webhook(
+    webhook_id: str = Path(..., description="Webhook UUID"),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Manually trigger a test ping for a specific webhook."""
+    service = ContributorWebhookService(db)
+    await service.test_webhook(user_id, webhook_id)
+    return {"status": "dispatched", "message": "Test event sent to subscriber"}
