@@ -154,7 +154,9 @@ class TestTreasuryDashboardAuth:
 
     def test_accepts_valid_key(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         assert resp.status_code == 200
@@ -163,7 +165,9 @@ class TestTreasuryDashboardAuth:
 class TestTreasuryDashboardStructure:
     def test_response_has_all_required_fields(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         data = resp.json()
@@ -179,7 +183,9 @@ class TestTreasuryDashboardStructure:
 
     def test_burn_rate_has_required_fields(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         burn = resp.json()["burn_rate"]
@@ -191,7 +197,9 @@ class TestTreasuryDashboardStructure:
 
     def test_daily_points_has_30_entries(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         points = resp.json()["daily_points"]
@@ -199,7 +207,9 @@ class TestTreasuryDashboardStructure:
 
     def test_spending_by_tier_has_3_tiers(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         tiers = resp.json()["spending_by_tier"]
@@ -211,7 +221,9 @@ class TestTreasuryDashboardStructure:
 class TestTreasuryBalances:
     def test_reflects_mock_balances(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         data = resp.json()
@@ -221,7 +233,9 @@ class TestTreasuryBalances:
 
     def test_totals_from_treasury_stats(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         data = resp.json()
@@ -233,7 +247,9 @@ class TestTreasuryTransactions:
     def test_payouts_appear_in_recent_transactions(self, client):
         _payout(pid="p1", amount=500.0, token="FNDRY", status=PayoutStatus.CONFIRMED)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         txs = resp.json()["recent_transactions"]
@@ -244,7 +260,9 @@ class TestTreasuryTransactions:
     def test_buybacks_appear_in_recent_transactions(self, client):
         _buyback(bid="b1", amount_sol=3.0, amount_fndry=30_000.0)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         txs = resp.json()["recent_transactions"]
@@ -257,7 +275,9 @@ class TestTreasuryTransactions:
         for i in range(25):
             _payout(pid=f"p{i}", amount=100.0, days_ago=i)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         txs = resp.json()["recent_transactions"]
@@ -267,7 +287,9 @@ class TestTreasuryTransactions:
         _payout(pid="old", amount=100.0, days_ago=5)
         _payout(pid="new", amount=200.0, days_ago=0)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         txs = resp.json()["recent_transactions"]
@@ -278,7 +300,9 @@ class TestTreasuryTransactions:
     def test_payout_includes_status_field(self, client):
         _payout(pid="p1", status=PayoutStatus.PENDING)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         txs = resp.json()["recent_transactions"]
@@ -291,7 +315,9 @@ class TestTreasuryDailyPoints:
         _payout(pid="p1", amount=1_000.0, days_ago=0, status=PayoutStatus.CONFIRMED)
         _payout(pid="p2", amount=2_000.0, days_ago=0, status=PayoutStatus.CONFIRMED)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         points = resp.json()["daily_points"]
@@ -303,7 +329,9 @@ class TestTreasuryDailyPoints:
     def test_pending_payouts_excluded_from_outflow(self, client):
         _payout(pid="p1", amount=5_000.0, days_ago=0, status=PayoutStatus.PENDING)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         points = resp.json()["daily_points"]
@@ -315,7 +343,9 @@ class TestTreasuryDailyPoints:
 class TestTreasuryBurnRate:
     def test_burn_rate_zero_when_no_payouts(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         burn = resp.json()["burn_rate"]
@@ -324,7 +354,9 @@ class TestTreasuryBurnRate:
 
     def test_runway_null_when_burn_rate_zero(self, client):
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         burn = resp.json()["burn_rate"]
@@ -334,9 +366,13 @@ class TestTreasuryBurnRate:
     def test_runway_calculated_from_balance_and_burn(self, client):
         # Put 1000 FNDRY/day confirmed payouts for past 7 days
         for i in range(7):
-            _payout(pid=f"p{i}", amount=1_000.0, days_ago=i, status=PayoutStatus.CONFIRMED)
+            _payout(
+                pid=f"p{i}", amount=1_000.0, days_ago=i, status=PayoutStatus.CONFIRMED
+            )
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         burn = resp.json()["burn_rate"]
@@ -352,7 +388,9 @@ class TestTreasurySpendingByTier:
         _bounty(bid="b1", status=BountyStatus.PAID, tier=BountyTier.T1, reward=500.0)
         _bounty(bid="b2", status=BountyStatus.PAID, tier=BountyTier.T3, reward=2_000.0)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         tiers = {t["tier"]: t for t in resp.json()["spending_by_tier"]}
@@ -364,7 +402,9 @@ class TestTreasurySpendingByTier:
     def test_unpaid_bounties_excluded_from_tier_breakdown(self, client):
         _bounty(bid="b1", status=BountyStatus.OPEN, tier=BountyTier.T2, reward=800.0)
         with patch(
-            "app.api.admin.get_treasury_stats", new_callable=AsyncMock, return_value=_mock_treasury()
+            "app.api.admin.get_treasury_stats",
+            new_callable=AsyncMock,
+            return_value=_mock_treasury(),
         ):
             resp = client.get("/api/admin/treasury/dashboard", headers=AUTH_HEADER)
         tiers = {t["tier"]: t for t in resp.json()["spending_by_tier"]}

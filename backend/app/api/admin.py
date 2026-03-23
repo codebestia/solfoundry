@@ -1018,7 +1018,7 @@ class TreasuryDashboardResponse(BaseModel):
 
 def _build_daily_points(payouts: list, days: int = 30) -> List[TreasuryDailyPoint]:
     """Aggregate confirmed/paid payout amounts by day for the last `days` days."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     today = datetime.now(timezone.utc).date()
     buckets: Dict[str, float] = {
@@ -1039,7 +1039,9 @@ def _build_daily_points(payouts: list, days: int = 30) -> List[TreasuryDailyPoin
     return [TreasuryDailyPoint(date=d, outflow=v) for d, v in buckets.items()]
 
 
-def _burn_rate(daily_points: List[TreasuryDailyPoint], fndry_balance: float) -> BurnRateProjection:
+def _burn_rate(
+    daily_points: List[TreasuryDailyPoint], fndry_balance: float
+) -> BurnRateProjection:
     """Compute avg daily burn from daily points over 7/30/90-day windows and runway."""
     values = [p.outflow for p in daily_points]
 
@@ -1109,7 +1111,11 @@ async def get_treasury_dashboard(
     per-tier spending breakdown, and the 20 most recent transactions.
     """
     from app.services.treasury_service import get_treasury_stats
-    from app.services.payout_service import _payout_store, _buyback_store, _lock as _store_lock
+    from app.services.payout_service import (
+        _payout_store,
+        _buyback_store,
+        _lock as _store_lock,
+    )
     from app.models.payout import PayoutStatus as PS
 
     # Snapshot stores under the lock to avoid races
@@ -1120,9 +1126,7 @@ async def get_treasury_dashboard(
     treasury = await get_treasury_stats()
 
     # Confirmed payouts only for burn-rate charts
-    confirmed_payouts = [
-        p for p in all_payouts if p.status in (PS.CONFIRMED,)
-    ]
+    confirmed_payouts = [p for p in all_payouts if p.status in (PS.CONFIRMED,)]
 
     daily_points = _build_daily_points(confirmed_payouts, days=30)
     burn_rate = _burn_rate(daily_points, treasury.fndry_balance)
